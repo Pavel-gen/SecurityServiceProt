@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система поиска аффилированности</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="search-container">
+                <input type="text" class="search-input" placeholder="Введите ИНН, ФИО, телефон, название..." id="searchInput">
+                <button class="search-btn" id="searchBtn"><i class="fas fa-search"></i> Найти</button>
+                <button class="advanced-search-btn" id="advancedSearchBtn"><i class="fas fa-sliders-h"></i> Расширенный поиск</button>
+            </div>
+        </div>
+    </header>
+    <div class="container">
+        <div class="filters-container" id="filtersContainer">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label class="filter-label">Тип объекта</label>
+                    <select class="filter-select" id="typeFilter">
+                        <option value="all">Все объекты</option>
+                        <option value="juridical">Юридические лица</option>
+                        <option value="physical">Физические лица</option>
+                        <option value="ip">ИП</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Вид связи</label>
+                    <select class="filter-select" id="connectionFilter">
+                        <option value="all">Все связи</option>
+                        <option value="contacts">Контакты</option>
+                        <option value="management">Руководство</option>
+                        <option value="founders">Учредители</option>
+                        <option value="address">Адреса</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Статус</label>
+                    <select class="filter-select" id="statusFilter">
+                        <option value="all">Все статусы</option>
+                        <option value="active">Действующие</option>
+                        <option value="inactive">Недействующие</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="results-header">
+            <div class="results-count" id="resultsCount">Найдено результатов: 0</div>
+            <div class="sort-container">
+                <select class="sort-select" id="sortSelect">
+                    <option value="relevance">По релевантности</option>
+                    <option value="alphabet">По алфавиту</option>
+                    <option value="status">По статусу</option>
+                </select>
+                <button class="sort-btn" id="sortDirectionBtn"><i class="fas fa-sort-amount-down"></i></button>
+                <button class="export-btn" id="exportBtn"><i class="fas fa-download"></i> Экспорт</button>
+            </div>
+        </div>
+        <div class="tabs">
+            <div class="tab active" data-tab="juridical">Юрлица <span class="tab-badge">0</span></div>
+            <div class="tab" data-tab="physical">Физлица <span class="tab-badge">0</span></div>
+            <div class="tab" data-tab="ip">ИП <span class="tab-badge">0</span></div>
+            <div class="tab" data-tab="graph">Граф связей</div>
+        </div>
+        <div class="empty-state" id="emptyState">
+            <i class="fas fa-search"></i>
+            <h3>Поиск информации по юрлицам</h3>
+            <p>Введите ИНН, название организации, ФИО или телефон для поиска информации</p>
+        </div>
+        <div class="results-section active" id="juridical-results">
+            <div class="results-container" id="juridicalContainer">
+                <!-- Карточки юрлиц будут добавлены сюда -->
+            </div>
+        </div>
+        <div class="results-section" id="physical-results">
+            <div class="results-container" id="physicalContainer">
+                <!-- Карточки физлиц будут добавлены сюда -->
+            </div>
+        </div>
+        <div class="results-section" id="ip-results">
+            <div class="results-container" id="ipContainer">
+                <!-- Карточки ИП будут добавлены сюда -->
+            </div>
+        </div>
+        <div class="results-section" id="graph-results">
+            <div class="graph-container">
+                <div class="graph-title">
+                    <i class="fas fa-project-diagram"></i>
+                    Граф связей между объектами
+                </div>
+                <div class="graph" id="connectionGraph">
+                    <!-- Граф будет отрисован с помощью JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
