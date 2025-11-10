@@ -59,23 +59,58 @@ async function performSearch() {
         const data = await response.json();
         console.log('Данные с сервера:', data); // Для отладки
 
-        // Сохраняем полученные результаты
+        // --- НАЧАЛО: Обработка и объединение результатов ---
+        // 1. Сохраняем результаты из локальной БД
         appState.results.juridical = data.juridical || [];
         appState.results.physical = data.physical || [];
         appState.results.ip = data.ip || [];
 
-        // Обновляем счетчики вкладок
+        // 2. Обрабатываем и добавляем результаты из Delta к juridical
+        if (Array.isArray(data.delta_results)) {
+            const deltaAsJuridical = data.delta_results.map(item => {
+                // Маппинг полей из Delta в структуру, понятную createCardHtml и совместимую с локальной БД
+                return {
+                    // Стандартные поля для createCardHtml
+                    INN: item.inn,
+                    OGRN: item.ogrn,
+                    KPP: item.kpp,
+                    NameFull: item.full_name,
+                    NameShort: item.short_name,
+                    AddressUr: item.register_address,
+                    PhoneNum: item.PhoneNum || item.fnsAdress_kpp?.phone || item.fnsAdress_inn?.phone || '', // Приоритет: маппинг из Delta, затем телефон ИФНС
+                    eMail: item.email || '', // Если есть в Delta
+                    // Дополнительные поля из Delta
+                    status_from_delta: item.status,
+                    charter_capital: item.charter_capital,
+                    main_activity: item.main_activity,
+                    register_date: item.register_date,
+                    register_type: item.register_type,
+                    register_address: item.register_address,
+                    // ... другие поля из Delta, если нужно ...
+                    // Поле, указывающее источник
+                    source: 'delta',
+                    // Оригинальные данные Delta для отладки (опционально)
+                    // delta_info: item
+                };
+            });
+            // Добавляем маппированные результаты Delta к juridical
+            appState.results.juridical = appState.results.juridical.concat(deltaAsJuridical);
+        }
+        // --- КОНЕЦ: Обработка и объединение результатов ---
+
+        // Обновляем счетчики вкладок (только для juridical, physical, ip)
         updateTabBadges();
 
         // Показываем результаты в активной вкладке
         displayResults(appState.currentTab);
 
-        // Обновляем счетчик найденных результатов
+        // Обновляем счетчик найденных результатов (только для juridical, physical, ip, теперь включая Delta)
         const totalResults = appState.results.juridical.length + appState.results.physical.length + appState.results.ip.length;
         document.getElementById('resultsCount').textContent = `Найдено результатов: ${totalResults}`;
 
-        // Скрываем пустое состояние, если есть результаты
-        emptyState.style.display = totalResults > 0 ? 'none' : 'block';
+        // Скрываем пустое состояние, если есть результаты (учитывая объединённые juridical)
+        const hasAnyResults = totalResults > 0;
+        emptyState.style.display = hasAnyResults ? 'none' : 'block';
 
     } catch (error) {
         console.error('Ошибка при поиске:', error);
@@ -124,318 +159,114 @@ function displayResults(tabName) {
 
 // Функция создания HTML-кода для карточки (адаптированная для отображения только непустых полей)
 function createCardHtml(item, tabName) {
-    // Это базовая версия, которая создает карточки с основной информацией
-    // Проверяет наличие и непустоту полей перед отображением
-    // И добавляет блок с JSON-данными для отладки
-    let title, icon, status = '', additionalInfo = '', connections = '';
+    // Определяем тип и соответствующие иконки/статусы
+    let icon = 'fas fa-question-circle';
+    let status = '';
+    let title = '';
 
-    if (tabName === 'juridical') {
-        // Приоритет: NameFull (полное название), затем NameShort (короткое название), затем INN
-        title = item.NameFull || item.NameShort || item.INN || 'Нет названия';
-        icon = 'fas fa-building';
-        // Определяем статус: если fIP = 1, то это ИП, иначе юрлицо
-        // Используем type, установленный сервером
-        status = item.type === 'ip' ? `<span class="card-status status-active">Действующее (ИП)</span>` : // Если тип ip, то статус ИП
-            `<span class="card-status status-active">Действующее</span>`; // Пример статуса для юрлица
+    // Приоритет: NameFull, затем NameShort, затем INN
+    title = item.NameFull || item.NameShort || item.INN || item.full_name || item.short_name || 'Нет названия';
 
-        // Собираем информацию, проверяя наличие и непустоту полей
-        let innInfo = '';
-        if (item.INN && item.INN.trim() !== '') {
-            innInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-id-card"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">ИНН</div>
-                        <div class="info-value">${item.INN}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let ogrnInfo = '';
-        if (item.OGRN && item.OGRN.trim() !== '') {
-            ogrnInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-id-card"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">ОГРН</div>
-                        <div class="info-value">${item.OGRN}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let addressUrInfo = '';
-        if (item.AddressUr && item.AddressUr.trim() !== '') {
-            addressUrInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-map-marker-alt"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Юр. адрес</div>
-                        <div class="info-value">${item.AddressUr}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let addressFaktInfo = '';
-        if (item.AddressFakt && item.AddressFakt.trim() !== '') {
-            addressFaktInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-map-marker-alt"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Факт. адрес</div>
-                        <div class="info-value">${item.AddressFakt}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let phoneInfo = '';
-        if (item.PhoneNum && item.PhoneNum.trim() !== '') {
-            phoneInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-phone"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Телефон</div>
-                        <div class="info-value">${item.PhoneNum}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let emailInfo = '';
-        if (item.eMail && item.eMail.trim() !== '') {
-            emailInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-envelope"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Email</div>
-                        <div class="info-value">${item.eMail}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Добавляем другие возможные поля из CI_Contragent, если они нужны и не пусты
-        // Пример для KPP:
-        let kppInfo = '';
-        if (item.KPP && item.KPP.trim() !== '') {
-            kppInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-id-card"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">КПП</div>
-                        <div class="info-value">${item.KPP}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        additionalInfo = innInfo + ogrnInfo + kppInfo + addressUrInfo + addressFaktInfo + phoneInfo + emailInfo; // Объединяем все блоки
-
-        // connections пока пустой, можно добавить логику, если данные о связях придут отдельно
-    } else if (tabName === 'physical') {
-        // Проверяем, откуда пришли данные (CI_Employees, CI_Contragent как физлицо)
-        // Используем доступные поля, приоритет fzFIO (из CI_Employees), затем NameShort (из CI_Contragent), затем INN
-        title = item.fzFIO || item.NameShort || item.INN || 'Нет ФИО';
-
-        // Определяем иконку: если это сотрудник (есть phOrgName), иначе физлицо
-        icon = item.phOrgName ? 'fas fa-user-tie' : 'fas fa-user';
-
-        // Собираем информацию, проверяя наличие и непустоту полей
-        let innInfo = '';
-        if (item.INN && item.INN.trim() !== '') {
-            innInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-id-card"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">ИНН</div>
-                        <div class="info-value">${item.INN}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let phoneInfo = '';
-        // Ищем телефон в разных возможных полях (из CI_Employees и CI_Contragent)
-        const phoneValue = item.fzPhoneM || item.PhoneNum; // Добавьте другие возможные поля, например, cpPhoneMob, cpPhoneWork из CI_ContPersons если вернете её
-        if (phoneValue && phoneValue.trim() !== '') {
-            phoneInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-phone"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Телефон</div>
-                        <div class="info-value">${phoneValue}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let emailInfo = '';
-        // Ищем email в разных возможных полях (из CI_Employees и CI_Contragent)
-        const emailValue = item.fzMail || item.eMail; // Добавьте cpMail если вернете CI_ContPersons
-        if (emailValue && emailValue.trim() !== '') {
-            emailInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-envelope"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Email</div>
-                        <div class="info-value">${emailValue}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let addressInfo = '';
-        // Ищем адреса в разных возможных полях (из CI_Employees и CI_Contragent)
-        const addrUrValue = item.fzAddress || item.AddressUr; // Добавьте cpAddress если вернете CI_ContPersons
-        const addrFaktValue = item.fzAddressF || item.AddressUFakt; // Добавьте cpAddress если вернете CI_ContPersons
-        if (addrUrValue && addrUrValue.trim() !== '') {
-            addressInfo += `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-map-marker-alt"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Адрес (рег.)</div>
-                        <div class="info-value">${addrUrValue}</div>
-                    </div>
-                </div>
-            `;
-        }
-        if (addrFaktValue && addrFaktValue.trim() !== '') {
-            addressInfo += `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-map-marker-alt"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Адрес (факт.)</div>
-                        <div class="info-value">${addrFaktValue}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        additionalInfo = innInfo + phoneInfo + emailInfo + addressInfo;
-
-        // Добавляем поля, специфичные для CI_Employees, если они есть и не пусты
-        if (item.phOrgName && item.phOrgName.trim() !== '') {
-             additionalInfo += `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-building"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Организация</div>
-                        <div class="info-value">${item.phOrgName}</div>
-                    </div>
-                </div>
-            `;
-        }
-        if (item.phOrgINN && item.phOrgINN.trim() !== '') {
-             additionalInfo += `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-id-card"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">ИНН организации</div>
-                        <div class="info-value">${item.phOrgINN}</div>
-                    </div>
-                </div>
-            `;
-        }
-        // Добавьте другие поля из CI_Employees, если нужно
-        if (item.fzDateB) { // Предположим, дата рождения может быть нужна
-            additionalInfo += `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-calendar"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Дата рождения</div>
-                        <div class="info-value">${item.fzDateB}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-    } else if (tabName === 'ip') { // Для данных из CI_Contragent с fIP=1 (возвращаются с type='ip')
-        // Приоритет: NameFull (полное название), затем NameShort (короткое название), затем INN
-        title = item.NameFull || item.NameShort || item.INN || 'Нет названия ИП';
+    // Определяем иконку по типу (если тип задан сервером) или по другим признакам
+    if (item.type === 'ip' || item.fIP === 1) {
         icon = 'fas fa-store';
-        status = `<span class="card-status status-active">Действующий (ИП)</span>`; // Пример статуса
-
-        // Собираем информацию, проверяя наличие и непустоту полей (аналогично юрлицу)
-        let innInfo = '';
-        if (item.INN && item.INN.trim() !== '') {
-            innInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-id-card"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">ИНН</div>
-                        <div class="info-value">${item.INN}</div>
-                    </div>
-                </div>
-            `;
+    } else if (item.type === 'physical' || item.UrFiz === 2) {
+        // Проверяем, является ли это сотрудником
+        icon = item.phOrgName ? 'fas fa-user-tie' : 'fas fa-user';
+    } else if (item.type === 'juridical' || item.UrFiz === 1) {
+        icon = 'fas fa-building';
+    } else {
+        // Если тип неясен, пробуем определить по наличию ИНН/ФИО
+        if (item.INN) {
+            // Предполагаем, что если есть ИНН и это не из CI_Employees (нет fzFIO), то юрлицо
+            if (item.fzFIO === undefined) {
+                icon = 'fas fa-building';
+            } else {
+                icon = 'fas fa-user'; // Физлицо из CI_Employees
+            }
         }
-
-        let ogrnInfo = '';
-        if (item.OGRN && item.OGRN.trim() !== '') {
-            ogrnInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-id-card"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">ОГРНИП</div>
-                        <div class="info-value">${item.OGRN}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let addressInfo = '';
-        if (item.AddressUr && item.AddressUr.trim() !== '') {
-            addressInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-map-marker-alt"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Адрес</div>
-                        <div class="info-value">${item.AddressUr}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let phoneInfo = '';
-        if (item.PhoneNum && item.PhoneNum.trim() !== '') {
-            phoneInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-phone"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Телефон</div>
-                        <div class="info-value">${item.PhoneNum}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let emailInfo = '';
-        if (item.eMail && item.eMail.trim() !== '') {
-            emailInfo = `
-                <div class="info-item">
-                    <div class="info-icon"><i class="fas fa-envelope"></i></div>
-                    <div class="info-content">
-                        <div class="info-label">Email</div>
-                        <div class="info-value">${item.eMail}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        additionalInfo = innInfo + ogrnInfo + addressInfo + phoneInfo + emailInfo;
     }
 
-    // --- ГЕНЕРАЦИЯ БЛОКА СВЯЗЕЙ ---
-        let connectionsBlock = '<p>Связей не найдено.</p>'; // Значение по умолчанию
-    let connectionCount = 0; // Счетчик связей для бейджа
+    // Определяем статус
+    // Приоритет: статус из Delta (status_from_delta или status из delta_info)
+    const deltaStatus = item.status_from_delta || (item.delta_info && item.delta_info.status);
+    if (deltaStatus) {
+        // Примеры статусов из Delta: "Действующее", "Ликвидируется", "Исключение из ЕГРЮЛ..."
+        let statusClass = 'status-active';
+        if (deltaStatus.toLowerCase().includes('ликвид') || deltaStatus.toLowerCase().includes('исключ')) {
+            statusClass = 'status-liquidated'; // Можно добавить CSS-класс для ликвидированных
+        }
+        status = `<span class="card-status ${statusClass}">${deltaStatus}</span>`;
+    } else if (item.type === 'ip') {
+        status = `<span class="card-status status-active">Действующий (ИП)</span>`;
+    } else if (item.type === 'juridical') {
+        status = `<span class="card-status status-active">Действующее</span>`;
+    }
+
+    // --- ОПРЕДЕЛЯЕМ ПОЛЯ ДЛЯ ОТОБРАЖЕНИЯ ---
+    // Массив пар [отображаемое_имя, имя_поля_в_объекте, иконка]
+    // Порядок важен. Поля, которых нет в объекте, будут пропущены.
+    const fieldsToDisplay = [
+        // Основные поля (локальные или объединённые)
+        ['ИНН', 'INN', 'fas fa-id-card'],
+        ['ОГРН', 'OGRN', 'fas fa-id-card'], // или 'ОГРНИП' для ИП
+        ['КПП', 'KPP', 'fas fa-id-card'], // только для юрлиц
+        // Поля из Delta (если объединены)
+        ['ИНН', 'inn', 'fas fa-id-card'], // Альтернативное имя из Delta
+        ['ОГРН', 'ogrn', 'fas fa-id-card'],
+        ['КПП', 'kpp', 'fas fa-id-card'],
+        ['Полное наименование', 'full_name', 'fas fa-building'], // из Delta
+        ['Краткое наименование', 'short_name', 'fas fa-building'], // из Delta
+        ['Фирменное наименование', 'firm_name', 'fas fa-building'], // из Delta
+        ['Статус', 'status_from_delta', 'fas fa-info-circle'], // из Delta
+        ['Статус (Delta)', 'status', 'fas fa-info-circle'], // если брали из delta_info.status
+        ['Дата регистрации', 'register_date', 'fas fa-calendar'],
+        ['Тип регистрации', 'register_type', 'fas fa-file-alt'],
+        ['Уставный капитал', 'charter_capital', 'fas fa-money-bill-wave'],
+        ['Основной вид деятельности', 'main_activity', 'fas fa-industry'],
+        ['Адрес регистрации', 'register_address', 'fas fa-map-marker-alt'],
+        ['Юр. адрес', 'AddressUr', 'fas fa-map-marker-alt'], // локальное поле
+        ['Факт. адрес', 'AddressUFakt', 'fas fa-map-marker-alt'], // локальное поле
+        ['Телефон', 'PhoneNum', 'fas fa-phone'], // локальное поле
+        ['Телефон (Delta)', 'phone', 'fas fa-phone'], // если будет из Delta
+        ['Email', 'eMail', 'fas fa-envelope'], // локальное поле
+        ['Email (Delta)', 'email', 'fas fa-envelope'], // если будет из Delta
+        ['ОКПО', 'okpo', 'fas fa-barcode'], // из Delta
+        ['ИНН организации (сотр.)', 'phOrgINN', 'fas fa-building'], // для сотрудников
+        ['Организация (сотр.)', 'phOrgName', 'fas fa-building'], // для сотрудников
+        ['ФИО (сотр.)', 'fzFIO', 'fas fa-user'], // для сотрудников
+        ['Дата рождения (сотр.)', 'fzDateB', 'fas fa-calendar'], // для сотрудников
+        // Добавьте другие поля по необходимости
+    ];
+
+    // --- ГЕНЕРИРУЕМ HTML ДЛЯ ОСНОВНОЙ ИНФОРМАЦИИ ---
+    let additionalInfo = '';
+    fieldsToDisplay.forEach(([label, field, iconClass]) => {
+        // Проверяем наличие значения в объединённом объекте
+        // Приоритет: объединённое поле (например, item.NameFull), затем поле из delta_info (item.delta_info?.NameFull)
+        const value = item[field] || (item.delta_info && item.delta_info[field]);
+        if (value && value.toString().trim() !== '') { // Проверяем, что значение есть и не пустая строка
+            additionalInfo += `
+                <div class="info-item">
+                    <div class="info-icon"><i class="${iconClass}"></i></div>
+                    <div class="info-content">
+                        <div class="info-label">${label}</div>
+                        <div class="info-value">${value}</div>
+                    </div>
+                </div>
+            `;
+        }
+    });
+
+    // --- ГЕНЕРИРУЕМ БЛОК СВЯЗЕЙ (как и раньше) ---
+     // --- ГЕНЕРИРУЕМ БЛОК СВЯЗЕЙ (как и раньше) ---
+    let connectionsBlock = '<p>Связей не найдено.</p>';
+    let connectionCount = 0;
 
     if (item.connections && Array.isArray(item.connections) && item.connections.length > 0) {
         const allConnectionsHtml = [];
 
         item.connections.forEach(connectionGroup => {
-            // Обработка связей по email
             if (connectionGroup.type === 'contact' && connectionGroup.subtype === 'email' && Array.isArray(connectionGroup.connections)) {
                 const contactValue = connectionGroup.contact;
                 const connectionsList = connectionGroup.connections;
@@ -472,20 +303,19 @@ function createCardHtml(item, tabName) {
                 contactSectionHtml += '</div>';
                 allConnectionsHtml.push(contactSectionHtml);
             }
-            // Обработка связей по телефону
             else if (connectionGroup.type === 'contact' && connectionGroup.subtype === 'phone' && Array.isArray(connectionGroup.connections)) {
-                const contactValue = connectionGroup.contact; // Например, '+79991112233'
+                const contactValue = connectionGroup.contact;
                 const connectionsList = connectionGroup.connections;
 
                 let contactSectionHtml = `
                     <div class="info-item">
-                        <div class="info-icon"><i class="fas fa-phone"></i></div> <!-- Используем иконку телефона -->
+                        <div class="info-icon"><i class="fas fa-phone"></i></div>
                         <div class="info-content">
-                            <div class="info-label">Телефон</div> <!-- Метка "Телефон" -->
-                            <div class="info-value">${contactValue}</div> <!-- Значение телефона -->
+                            <div class="info-label">Телефон</div>
+                            <div class="info-value">${contactValue}</div>
                         </div>
                     </div>
-                    <div class="connections-details-container"> <!-- Контейнер для связанных сущностей -->
+                    <div class="connections-details-container">
                 `;
 
                 connectionsList.forEach(conn => {
@@ -498,17 +328,101 @@ function createCardHtml(item, tabName) {
                     else if (connectedType === 'ip') connectedIcon = 'fas fa-store';
                     else if (connectedType === 'physical') connectedIcon = 'fas fa-user';
 
-                    // Добавляем элемент связи с отступом и символом
                     contactSectionHtml += `
-                        <div class="connection-detail"> <!-- Класс для отступа и стиля -->
-                            <i class="${connectedIcon}"></i> <!-- Иконка связанной сущности -->
-                            ${connectedName} (${conn.connectionDetails}) <!-- Имя и детали -->
+                        <div class="connection-detail">
+                            <i class="${connectedIcon}"></i>
+                            ${connectedName} (${conn.connectionDetails})
                         </div>
                     `;
                     connectionCount++;
                 });
-                contactSectionHtml += '</div>'; // Закрываем контейнер
+                contactSectionHtml += '</div>';
                 allConnectionsHtml.push(contactSectionHtml);
+            }
+            // --- НОВЫЙ БЛОК: Обработка связей по ИНН ---
+            else if (connectionGroup.type === 'inn' && connectionGroup.subtype === 'inn_match' && Array.isArray(connectionGroup.connections)) {
+                const innValue = connectionGroup.contact; // ИНН, по которому была найдена связь
+                const connectionsList = connectionGroup.connections;
+
+                // НЕ группируем связи, а отображаем каждую отдельно
+                // let innSectionHtml = `<div class="info-item"><div class="info-icon"><i class="fas fa-id-card"></i></div><div class="info-content"><div class="info-label">ИНН: ${innValue}</div>`; // Включаем ИНН в лейбл
+                let innSectionHtml = `
+                    <div class="info-item">
+                        <div class="info-icon"><i class="fas fa-id-card"></i></div>
+                        <div class="info-content">
+                            <div class="info-label">ИНН</div>
+                            <div class="info-value">${item.INN}</div>
+                        </div>
+                    </div>
+                    <div class="connections-details-container">
+                `;
+
+                // Перебираем каждую связь отдельно
+                connectionsList.forEach(conn => {
+                    const connectedEntity = conn.connectedEntity;
+                    const connectedName = connectedEntity.NameShort || connectedEntity.NameFull || connectedEntity.INN || 'N/A';
+                    const connectedType = connectedEntity.type || 'unknown';
+                    const connectionStatus = conn.connectionStatus;
+                    const sourceTable = connectedEntity.sourceTable;
+                    const baseName = connectedEntity.baseName; // Имя БД источника
+
+                    let connectedIcon = 'fas fa-question-circle';
+                    if (connectedType === 'juridical') connectedIcon = 'fas fa-building';
+                    else if (connectedType === 'ip') connectedIcon = 'fas fa-store';
+                    else if (connectedType === 'physical') connectedIcon = 'fas fa-user';
+
+                    // Определяем человекочитаемое описание статуса
+                    let statusDescription = 'Статус неизвестен';
+                    switch (connectionStatus) {
+                        case 'organization_match':
+                            statusDescription = 'Совпадение по ИНН организации';
+                            break;
+                        case 'former_employee':
+                            statusDescription = 'Бывший сотрудник';
+                            break;
+                        case 'current_employee':
+                            statusDescription = 'Текущий сотрудник';
+                            break;
+                        case 'contact_person':
+                            statusDescription = 'Контактное лицо';
+                            break;
+                        default:
+                            statusDescription = connectionStatus; // Используем как есть, если не распознали
+                    }
+
+                    // Определяем человекочитаемое описание источника
+                    let sourceDescription = 'Источник неизвестен';
+                    switch (sourceTable) {
+                        case 'contragent':
+                            sourceDescription = 'Данные из реестра контрагентов';
+                            break;
+                        case 'prevwork':
+                            sourceDescription = 'Данные из предыдущих мест работы';
+                            break;
+                        case 'employee':
+                            sourceDescription = 'Данные из сотрудников';
+                            break;
+                        case 'contperson':
+                            sourceDescription = 'Данные из контактных лиц';
+                            break;
+                        default:
+                            sourceDescription = sourceTable; // Используем как есть, если не распознали
+                    }
+
+                    // Формируем описание источника БД
+                    const baseNameDescription = baseName ? `BD: ${baseName}` : 'BD: не указана';
+
+                    innSectionHtml += `
+                        <div class="connection-detail">
+                            <i class="${connectedIcon}"></i>
+                            ${connectedName} (${statusDescription}, ${sourceDescription}, ${baseNameDescription})
+                        </div>
+                    `;
+                    connectionCount++; // Увеличиваем счетчик на 1 за каждую связь
+                });
+
+                innSectionHtml += '</div>';
+                allConnectionsHtml.push(innSectionHtml);
             }
             // else if ... (другие типы связей)
         });
@@ -517,15 +431,13 @@ function createCardHtml(item, tabName) {
             connectionsBlock = allConnectionsHtml.join('');
         }
     }
-
     // --- КОНЕЦ ГЕНЕРАЦИИ БЛОКА СВЯЗЕЙ ---
 
-    // --- Добавляем блок с JSON данными ---
-    // Экранируем кавычки и переводы строк для использования в HTML атрибуте и вставке в <pre>
-    const itemJsonString = JSON.stringify(item, null, 2) // Форматируем JSON с отступами
-        .replace(/&/g, '&amp;') // Экранируем &
-        .replace(/</g, '<')  // Экранируем <
-        .replace(/>/g, '>'); // Экранируем >
+    // --- ДОБАВЛЯЕМ БЛОК JSON (как и раньше) ---
+    const itemJsonString = JSON.stringify(item, null, 2)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '<')
+        .replace(/>/g, '>');
 
     const jsonInfoBlock = `
         <div class="info-item">
@@ -539,7 +451,7 @@ function createCardHtml(item, tabName) {
         </div>
     `;
 
-    // --- ВСТАВКА connectionsBlock и connectionCount в HTML карточки ---
+    // --- ВОЗВРАЩАЕМ HTML КАРТОЧКИ ---
     return `
         <div class="card">
             <div class="card-header">
@@ -566,7 +478,7 @@ function createCardHtml(item, tabName) {
                         </div>
                     </div>
                     <div class="toggle-content">
-                        ${jsonInfoBlock} <!-- Добавляем блок JSON здесь -->
+                        ${jsonInfoBlock}
                         <p>Дополнительная информация будет загружаться сюда.</p>
                     </div>
                 </div>
@@ -575,17 +487,18 @@ function createCardHtml(item, tabName) {
                         <div class="toggle-title">
                             <i class="fas fa-chevron-down"></i>
                             <span>Связи</span>
-                            <span class="toggle-badge">${connectionCount}</span> <!-- Вставляем счетчик -->
+                            <span class="toggle-badge">${connectionCount}</span>
                         </div>
                     </div>
                     <div class="toggle-content">
-                        ${connectionsBlock} <!-- Вставляем сгенерированный блок связей -->
+                        ${connectionsBlock}
                     </div>
                 </div>
             </div>
         </div>
     `;
 }
+
 
 // ... (остальной код script.js остается без изменений) ...
 
