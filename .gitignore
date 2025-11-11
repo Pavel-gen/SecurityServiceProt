@@ -7,7 +7,7 @@ config.json
 # или конкретные файлы, например:
 # db_config.js
 # credentials.json
-
+config/
 # Игнорировать файлы логов (если есть)
 *.log
 

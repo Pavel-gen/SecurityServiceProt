@@ -60,42 +60,17 @@ async function performSearch() {
         console.log('Данные с сервера:', data); // Для отладки
 
         // --- НАЧАЛО: Обработка и объединение результатов ---
-        // 1. Сохраняем результаты из локальной БД
+        // 1. Сохраняем результаты из локальной БД И ДЕЛЬТЫ (уже обработанные сервером)
+        // Предполагается, что сервер возвращает объединённые/обогащённые массивы
+        // juridical, physical, ip, которые уже содержат как локальные, так и дельтовские сущности.
+        // Дельтовские сущности уже имеют поле source: 'delta' и другие delta-поля.
         appState.results.juridical = data.juridical || [];
         appState.results.physical = data.physical || [];
         appState.results.ip = data.ip || [];
 
-        // 2. Обрабатываем и добавляем результаты из Delta к juridical
-        if (Array.isArray(data.delta_results)) {
-            const deltaAsJuridical = data.delta_results.map(item => {
-                // Маппинг полей из Delta в структуру, понятную createCardHtml и совместимую с локальной БД
-                return {
-                    // Стандартные поля для createCardHtml
-                    INN: item.inn,
-                    OGRN: item.ogrn,
-                    KPP: item.kpp,
-                    NameFull: item.full_name,
-                    NameShort: item.short_name,
-                    AddressUr: item.register_address,
-                    PhoneNum: item.PhoneNum || item.fnsAdress_kpp?.phone || item.fnsAdress_inn?.phone || '', // Приоритет: маппинг из Delta, затем телефон ИФНС
-                    eMail: item.email || '', // Если есть в Delta
-                    // Дополнительные поля из Delta
-                    status_from_delta: item.status,
-                    charter_capital: item.charter_capital,
-                    main_activity: item.main_activity,
-                    register_date: item.register_date,
-                    register_type: item.register_type,
-                    register_address: item.register_address,
-                    // ... другие поля из Delta, если нужно ...
-                    // Поле, указывающее источник
-                    source: 'delta',
-                    // Оригинальные данные Delta для отладки (опционально)
-                    // delta_info: item
-                };
-            });
-            // Добавляем маппированные результаты Delta к juridical
-            appState.results.juridical = appState.results.juridical.concat(deltaAsJuridical);
-        }
+        // 2. (Опционально) Сохраняем delta_results отдельно, если нужно для других целей (например, отдельного отображения)
+        // appState.results.delta_results = data.delta_results || [];
+
         // --- КОНЕЦ: Обработка и объединение результатов ---
 
         // Обновляем счетчики вкладок (только для juridical, physical, ip)
@@ -203,6 +178,17 @@ function createCardHtml(item, tabName) {
         status = `<span class="card-status status-active">Действующее</span>`;
     }
 
+    // --- ОПРЕДЕЛЯЕМ ИСТОЧНИК ---
+    let sourceInfo = '';
+    if (item.source === 'local') {
+        const tableName = item.sourceTable || 'Неизвестная таблица';
+        const dbName = item.baseName || 'Неизвестная БД';
+        sourceInfo = `<div class="info-item"><div class="info-icon"><i class="fas fa-database"></i></div><div class="info-content"><div class="info-label">Источник</div><div class="info-value">Локально, Таблица: ${tableName}, БД: ${dbName}</div></div></div>`;
+    } else if (item.source === 'delta') {
+        const endpoint = item.sourceEndpoint || 'Неизвестный эндпоинт';
+        sourceInfo = `<div class="info-item"><div class="info-icon"><i class="fas fa-external-link-alt"></i></div><div class="info-content"><div class="info-label">Источник</div><div class="info-value">Delta Безопасность (${endpoint})</div></div></div>`;
+    }
+
     // --- ОПРЕДЕЛЯЕМ ПОЛЯ ДЛЯ ОТОБРАЖЕНИЯ ---
     // Массив пар [отображаемое_имя, имя_поля_в_объекте, иконка]
     // Порядок важен. Поля, которых нет в объекте, будут пропущены.
@@ -258,8 +244,7 @@ function createCardHtml(item, tabName) {
         }
     });
 
-    // --- ГЕНЕРИРУЕМ БЛОК СВЯЗЕЙ (как и раньше) ---
-     // --- ГЕНЕРИРУЕМ БЛОК СВЯЗЕЙ (как и раньше) ---
+    // --- ГЕНЕРИРУЕМ БЛОК СВЯЗЕЙ (обновлённый) ---
     let connectionsBlock = '<p>Связей не найдено.</p>';
     let connectionCount = 0;
 
@@ -267,91 +252,19 @@ function createCardHtml(item, tabName) {
         const allConnectionsHtml = [];
 
         item.connections.forEach(connectionGroup => {
-            if (connectionGroup.type === 'contact' && connectionGroup.subtype === 'email' && Array.isArray(connectionGroup.connections)) {
-                const contactValue = connectionGroup.contact;
-                const connectionsList = connectionGroup.connections;
+            // ... (логика для email и phone, если нужна) ...
 
-                let contactSectionHtml = `
-                    <div class="info-item">
-                        <div class="info-icon"><i class="fas fa-envelope"></i></div>
-                        <div class="info-content">
-                            <div class="info-label">Email</div>
-                            <div class="info-value">${contactValue}</div>
-                        </div>
-                    </div>
-                    <div class="connections-details-container">
-                `;
-
-                connectionsList.forEach(conn => {
-                    const connectedEntity = conn.connectedEntity;
-                    const connectedName = connectedEntity.NameShort || connectedEntity.NameFull || connectedEntity.INN || 'N/A';
-                    const connectedType = connectedEntity.type || 'unknown';
-
-                    let connectedIcon = 'fas fa-question-circle';
-                    if (connectedType === 'juridical') connectedIcon = 'fas fa-building';
-                    else if (connectedType === 'ip') connectedIcon = 'fas fa-store';
-                    else if (connectedType === 'physical') connectedIcon = 'fas fa-user';
-
-                    contactSectionHtml += `
-                        <div class="connection-detail">
-                            <i class="${connectedIcon}"></i>
-                            ${connectedName} (${conn.connectionDetails})
-                        </div>
-                    `;
-                    connectionCount++;
-                });
-                contactSectionHtml += '</div>';
-                allConnectionsHtml.push(contactSectionHtml);
-            }
-            else if (connectionGroup.type === 'contact' && connectionGroup.subtype === 'phone' && Array.isArray(connectionGroup.connections)) {
-                const contactValue = connectionGroup.contact;
-                const connectionsList = connectionGroup.connections;
-
-                let contactSectionHtml = `
-                    <div class="info-item">
-                        <div class="info-icon"><i class="fas fa-phone"></i></div>
-                        <div class="info-content">
-                            <div class="info-label">Телефон</div>
-                            <div class="info-value">${contactValue}</div>
-                        </div>
-                    </div>
-                    <div class="connections-details-container">
-                `;
-
-                connectionsList.forEach(conn => {
-                    const connectedEntity = conn.connectedEntity;
-                    const connectedName = connectedEntity.NameShort || connectedEntity.NameFull || connectedEntity.INN || 'N/A';
-                    const connectedType = connectedEntity.type || 'unknown';
-
-                    let connectedIcon = 'fas fa-question-circle';
-                    if (connectedType === 'juridical') connectedIcon = 'fas fa-building';
-                    else if (connectedType === 'ip') connectedIcon = 'fas fa-store';
-                    else if (connectedType === 'physical') connectedIcon = 'fas fa-user';
-
-                    contactSectionHtml += `
-                        <div class="connection-detail">
-                            <i class="${connectedIcon}"></i>
-                            ${connectedName} (${conn.connectionDetails})
-                        </div>
-                    `;
-                    connectionCount++;
-                });
-                contactSectionHtml += '</div>';
-                allConnectionsHtml.push(contactSectionHtml);
-            }
             // --- НОВЫЙ БЛОК: Обработка связей по ИНН ---
-            else if (connectionGroup.type === 'inn' && connectionGroup.subtype === 'inn_match' && Array.isArray(connectionGroup.connections)) {
+            if (connectionGroup.type === 'inn' && connectionGroup.subtype === 'inn_match' && Array.isArray(connectionGroup.connections)) {
                 const innValue = connectionGroup.contact; // ИНН, по которому была найдена связь
                 const connectionsList = connectionGroup.connections;
 
-                // НЕ группируем связи, а отображаем каждую отдельно
-                // let innSectionHtml = `<div class="info-item"><div class="info-icon"><i class="fas fa-id-card"></i></div><div class="info-content"><div class="info-label">ИНН: ${innValue}</div>`; // Включаем ИНН в лейбл
                 let innSectionHtml = `
                     <div class="info-item">
                         <div class="info-icon"><i class="fas fa-id-card"></i></div>
                         <div class="info-content">
-                            <div class="info-label">ИНН</div>
-                            <div class="info-value">${item.INN}</div>
+                            <div class="info-label">Связи по ИНН</div>
+                            <div class="info-value">${innValue}</div>
                         </div>
                     </div>
                     <div class="connections-details-container">
@@ -365,6 +278,7 @@ function createCardHtml(item, tabName) {
                     const connectionStatus = conn.connectionStatus;
                     const sourceTable = connectedEntity.sourceTable;
                     const baseName = connectedEntity.baseName; // Имя БД источника
+                    const source = connectedEntity.source; // Источник: local или delta
 
                     let connectedIcon = 'fas fa-question-circle';
                     if (connectedType === 'juridical') connectedIcon = 'fas fa-building';
@@ -390,32 +304,36 @@ function createCardHtml(item, tabName) {
                             statusDescription = connectionStatus; // Используем как есть, если не распознали
                     }
 
-                    // Определяем человекочитаемое описание источника
+                    // Определяем человекочитаемое описание источника и БД
                     let sourceDescription = 'Источник неизвестен';
-                    switch (sourceTable) {
-                        case 'contragent':
-                            sourceDescription = 'Данные из реестра контрагентов';
-                            break;
-                        case 'prevwork':
-                            sourceDescription = 'Данные из предыдущих мест работы';
-                            break;
-                        case 'employee':
-                            sourceDescription = 'Данные из сотрудников';
-                            break;
-                        case 'contperson':
-                            sourceDescription = 'Данные из контактных лиц';
-                            break;
-                        default:
-                            sourceDescription = sourceTable; // Используем как есть, если не распознали
+                    let baseNameDescription = '';
+                    if (source === 'local') {
+                        switch (sourceTable) {
+                            case 'contragent':
+                                sourceDescription = 'Контрагент';
+                                break;
+                            case 'prevwork':
+                                sourceDescription = 'Предыдущее место работы';
+                                break;
+                            case 'employee':
+                                sourceDescription = 'Сотрудник';
+                                break;
+                            case 'contperson':
+                                sourceDescription = 'Контактное лицо';
+                                break;
+                            default:
+                                sourceDescription = sourceTable; // Используем как есть, если не распознали
+                        }
+                        baseNameDescription = baseName ? ` (БД: ${baseName})` : ' (БД: не указана)';
+                    } else if (source === 'delta') {
+                        sourceDescription = 'Delta Безопасность';
+                        baseNameDescription = ''; // Delta не имеет BaseName
                     }
-
-                    // Формируем описание источника БД
-                    const baseNameDescription = baseName ? `BD: ${baseName}` : 'BD: не указана';
 
                     innSectionHtml += `
                         <div class="connection-detail">
                             <i class="${connectedIcon}"></i>
-                            ${connectedName} (${statusDescription}, ${sourceDescription}, ${baseNameDescription})
+                            ${connectedName} (${statusDescription}, ${sourceDescription}${baseNameDescription})
                         </div>
                     `;
                     connectionCount++; // Увеличиваем счетчик на 1 за каждую связь
@@ -468,6 +386,7 @@ function createCardHtml(item, tabName) {
             </div>
             <div class="card-content">
                 <div class="basic-info">
+                    ${sourceInfo} <!-- Добавляем информацию об источнике -->
                     ${additionalInfo}
                 </div>
                 <div class="toggle-section">
@@ -498,6 +417,7 @@ function createCardHtml(item, tabName) {
         </div>
     `;
 }
+
 
 
 // ... (остальной код script.js остается без изменений) ...

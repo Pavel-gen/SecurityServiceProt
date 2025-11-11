@@ -20,6 +20,7 @@ function filterEntitiesByCompleteness(entities, keyField) {
         // Считаем заполненность для каждой сущности в группе
         const entitiesWithCompleteness = entityGroup.map(entity => {
             let completeness = 0;
+            // eslint-disable-next-line no-unused-vars
             for (const [key, value] of Object.entries(entity)) {
                 if (value !== null && value !== undefined && value !== '') {
                     completeness++;
@@ -39,6 +40,6 @@ function filterEntitiesByCompleteness(entities, keyField) {
     return filteredEntities;
 }
 
-module.exports = {
+export {
     filterEntitiesByCompleteness
 };

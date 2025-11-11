@@ -1,20 +1,11 @@
-// findLocalData.js
+import sql from 'mssql'
+import 'dotenv/config';
+import { config } from '../config/dbConfig.js';
 
-const sql = require('mssql');
-require('dotenv').config(); // Загружаем переменные из .env
-
-const config = {
-    user: process.env.DB_USER, // Берём из .env
-    password: process.env.DB_PASSWORD, // Берём из .env
-    server: process.env.DB_SERVER, // Берём из .env
-    port: parseInt(process.env.DB_PORT), // Берём из .env, преобразуем в число
-    database: process.env.DB_NAME, // Берём из .env
-    options: { encrypt: process.env.DB_ENCRYPT === 'true' } // Берём из .env, преобразуем в boolean
-};
 // Приводит поля INN, UNID, fzUID, cpUID, PersonUNID к единому формату
 function normalizeEntity(entity) {
     // Нормализуем ИНН
-    if (entity && entity.inn && !entity.INN) { // Если есть 'inn' (маленькая), но нет 'INN' (большая)
+    if (entity && entity.inn && !entity.INN) {
         entity.INN = entity.inn;
     }
     // Нормализуем OGRN
@@ -65,7 +56,6 @@ function normalizeEntity(entity) {
 
     return entity;
 }
-
 
 async function fetchLocalData(query) {
     // Подключение к БД
@@ -141,24 +131,35 @@ async function fetchLocalData(query) {
     ]);
 
     // --- НОРМАЛИЗАЦИЯ И ОБЪЕДИНЕНИЕ РЕЗУЛЬТАТОВ ---
-    const contragents = contragentResult.recordset.map(row => normalizeEntity({
-        UNID: row.UNID,
-        ConCode: row.ConCode,
-        INN: row.INN,
-        KPP: row.KPP,
-        OGRN: row.OGRN,
-        NameShort: row.NameShort,
-        NameFull: row.NameFull,
-        PhoneNum: row.PhoneNum,
-        eMail: row.eMail,
-        UrFiz: row.UrFiz,
-        fIP: row.fIP_CG, // Используем псевдоним
-        AddressUr: row.AddressUr,
-        AddressUFakt: row.AddressUFakt,
-        fSZ: row.fSZ,
-        type: 'juridical', // или 'ip' в зависимости от fIP
-        BaseName: row.BaseName // Добавляем BaseName
-    }));
+    const contragents = contragentResult.recordset.map(row => {
+        const normalized = normalizeEntity({
+            UNID: row.UNID,
+            ConCode: row.ConCode,
+            INN: row.INN,
+            KPP: row.KPP,
+            OGRN: row.OGRN,
+            NameShort: row.NameShort,
+            NameFull: row.NameFull,
+            PhoneNum: row.PhoneNum,
+            eMail: row.eMail,
+            UrFiz: row.UrFiz,
+            fIP: row.fIP_CG, // Используем псевдоним
+            AddressUr: row.AddressUr,
+            AddressUFakt: row.AddressUFakt,
+            fSZ: row.fSZ,
+            type: 'juridical', // или 'ip' в зависимости от fIP
+            // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
+            source: 'local',
+            sourceTable: 'CI_Contragent_test',
+            baseName: row.BaseName
+            // ---
+        });
+        // Дополнительная логика определения типа, если fIP не надёжно
+        if (normalized.fIP === 1) normalized.type = 'ip';
+        else if (normalized.UrFiz === 1) normalized.type = 'juridical';
+        else if (normalized.UrFiz === 2) normalized.type = 'physical';
+        return normalized;
+    });
 
     const employees = employeeResult.recordset.map(row => normalizeEntity({
         fzUID: row.fzUID,
@@ -183,7 +184,11 @@ async function fetchLocalData(query) {
         phRegUID: row.phRegUID,
         fzPhoneM: row.fzPhoneM,
         type: 'physical',
-        BaseName: row.BaseName // Добавляем BaseName
+        // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
+        source: 'local',
+        sourceTable: 'CI_Employees_test',
+        baseName: row.BaseName
+        // ---
     }));
 
     const contPersons = contPersonResult.recordset.map(row => normalizeEntity({
@@ -207,7 +212,11 @@ async function fetchLocalData(query) {
         cpReg: row.cpReg,
         cpTown: row.cpTown,
         type: 'physical',
-        BaseName: row.BaseName // Добавляем BaseName
+        // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
+        source: 'local',
+        sourceTable: 'CI_ContPersons_test',
+        baseName: row.BaseName
+        // ---
     }));
 
     const prevWorks = prevWorkResult.recordset.map(row => normalizeEntity({
@@ -218,7 +227,12 @@ async function fetchLocalData(query) {
         Phone: row.Phone,
         eMail: row.EMail, // Обратите внимание на исходное имя столбца в запросе
         WorkPeriod: row.WorkPeriod,
-        type: 'prevwork' // Указываем тип для удобства
+        type: 'prevwork', // Указываем тип для удобства
+        // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
+        source: 'local',
+        sourceTable: 'CF_PrevWork_test',
+        baseName: null // CF_PrevWork_test не имеет BaseName
+        // ---
     }));
 
     const persons = personResult.recordset.map(row => normalizeEntity({
@@ -233,14 +247,24 @@ async function fetchLocalData(query) {
         RegAddressForm: row.RegAddressForm,
         ResAddressForm: row.ResAddressForm,
         State: row.State,
-        type: 'physical' // Указываем тип для удобства
+        type: 'physical', // Указываем тип для удобства
+        // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
+        source: 'local',
+        sourceTable: 'CF_Persons_test',
+        baseName: null // CF_Persons_test не имеет BaseName
+        // ---
     }));
 
     const contacts = contactResult.recordset.map(row => ({
         PersonUNID: row.PersonUNID,
         ContactType: row.ContactType,
         Contact: row.Contact,
-        type: 'contact' // Указываем тип для удобства
+        type: 'contact', // Указываем тип для удобства
+        // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
+        source: 'local',
+        sourceTable: 'CF_Contacts_test',
+        baseName: null // CF_Contacts_test не имеет BaseName
+        // ---
     }));
 
     // Объединяем все результаты
@@ -262,4 +286,4 @@ async function fetchLocalData(query) {
     };
 }
 
-module.exports = { fetchLocalData };
+export { fetchLocalData };

@@ -1,0 +1,161 @@
+@startuml
+' Определение стереотипов для обозначения типа сущности
+!define Table(x) class x <<Table>>
+
+' Сущности, соответствующие таблицам в БД
+Table("CF_Persons") {
+    UNID: varchar
+    INN: varchar
+    SNILS: varchar
+    FirstName: varchar
+    LastName: varchar
+    MiddleName: varchar
+    BirthDate: datetime
+    RegAddressPassport: varchar
+    RegAddressForm: varchar
+    ResAddressForm: varchar
+    State: varchar
+}
+
+Table("CF_Contacts") {
+    PersonUNID: varchar
+    ContactType: varchar
+    Contact: varchar
+}
+
+Table("CF_PrevWork") {
+    PersonUNID: varchar
+    INN: varchar
+    OGRN: varchar
+    Caption: varchar
+    Phone: varchar
+    EMail: varchar
+    WorkPeriod: varchar
+}
+
+Table("CI_Contragent") {
+    RegDate: datetime
+    BaseName: varchar
+    UrFiz: int
+    UNID: varchar
+    ConCode: varchar
+    INN: varchar
+    KPP: varchar
+    OGRN: varchar
+    NameShort: varchar
+    NameFull: varchar
+    PhoneNum: varchar
+    FaxNum: varchar
+    eMail: varchar
+    AddressUr: varchar
+    AddressUFakt: varchar
+    fSZ: bit
+    fIP: bit
+}
+
+Table("CI_ContPersons") {
+    RegDate: datetime
+    BaseName: varchar
+    cpUID: varchar
+    conUID: varchar
+    conCode: varchar
+    conINN: varchar
+    cpNameFull: varchar
+    cpName1: varchar
+    cpName2: varchar
+    cpName3: varchar
+    cpDateB: datetime
+    cpFunction: varchar
+    cpVid: varchar
+    cpPhoneMob: varchar
+    cpPhoneMobS: varchar
+    cpPhoneWork: varchar
+    cpMail: varchar
+    cpAddress: varchar
+    cpCountry: varchar
+    cpReg: varchar
+    cpTown: varchar
+}
+
+Table("CI_Employees") {
+    RegDate: datetime
+    BaseName: varchar
+    fzUID: varchar
+    fzFIO: varchar
+    fzCode: varchar
+    fzDateB: datetime
+    fzAddress: varchar
+    fzAddressF: varchar
+    fzPhone: varchar
+    fzMail: varchar
+    emUID: varchar
+    phOrgUID: varchar
+    phOrgINN: varchar
+    phOrgName: varchar
+    phDep: varchar
+    phFunction: varchar
+    phEventType: varchar
+    phContractType: varchar
+    phDate: datetime
+    phRegistrator: varchar
+    phRegUID: varchar
+    fzPhoneM: varchar
+    fzINN: varchar
+}
+
+' Внешняя сущность Delta API
+class DeltaAPIResponse {
+    status: string
+    inn: string
+    ogrn: string
+    kpp: string
+    okpo: string
+    full_name: string
+    short_name: string
+    firm_name: string
+    register_date: string
+    register_type: string
+    charter_capital: string
+    main_activity: string
+    register_address_code: string
+    register_address: string
+    link: string
+    company_id: string
+    fnsAdress_inn: array
+    fnsAdress_kpp: array
+}
+
+' Связи между сущностями
+
+' Связь между CF_Persons и CF_Contacts
+CF_Contacts ||--o{ CF_Persons : "PersonUNID -> UNID"
+note on link : PersonUNID в CF_Contacts ссылается на UNID в CF_Persons
+
+' Связь между CF_Persons и CF_PrevWork (логическая, по UNID)
+CF_PrevWork ||--o{ CF_Persons : "PersonUNID -> UNID (логическая связь)"
+note on link : PersonUNID в CF_PrevWork логически связан с UNID в CF_Persons
+note on link : Это может означать, что PersonUNID - это UNID физического лица
+
+' Связь между CF_PrevWork и CI_Contragent (логическая, по ИНН/ОГРН)
+CF_PrevWork }o--|| CI_Contragent : "INN, OGRN -> INN, OGRN (логическая связь)"
+note on link : INN и OGRN в CF_PrevWork могут соответствовать INN и OGRN в CI_Contragent
+
+' Связь между CI_Employees и CF_Persons (логическая, по fzUID и UNID или fzINN и INN)
+CI_Employees }o--|| CF_Persons : "fzUID -> UNID (логическая связь)"
+note on link : fzUID в CI_Employees может быть UNID физического лица в CF_Persons
+CI_Employees }o--|| CF_Persons : "fzINN -> INN (логическая связь)"
+note on link : fzINN в CI_Employees может быть INN физического лица в CF_Persons
+
+' Связь между CI_Employees и CI_Contragent (логическая, по phOrgINN и INN)
+CI_Employees }o--|| CI_Contragent : "phOrgINN -> INN (работает в)"
+note on link : phOrgINN в CI_Employees указывает ИНН организации (CI_Contragent)
+
+' Связь между CI_ContPersons и CI_Contragent (логическая, по conINN и INN)
+CI_ContPersons }o--|| CI_Contragent : "conINN -> INN (контактное лицо для)"
+note on link : conINN в CI_ContPersons может быть ИНН контрагента (CI_Contragent)
+
+' Связь между DeltaAPIResponse и CI_Contragent (логическая, по ИНН)
+DeltaAPIResponse }o--|| CI_Contragent : "inn -> INN (данные из Delta API)"
+note on link : inn из DeltaAPIResponse может соответствовать INN в CI_Contragent
+
+@enduml
