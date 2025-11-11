@@ -133,7 +133,7 @@ async function findConnectionsByPhone(targetEntities) {
             WHERE (${prevWorkWhereConditions}) -- Условия для cpw.Phone
         `;
 
-        console.log("Выполняемый SQL для телефона:", fullPhoneQuery); // Лог
+        // console.log("Выполняемый SQL для телефона:", fullPhoneQuery); // Лог
 
         // Создаем запрос и добавляем параметры для всех телефонов
         const phoneRequest = new sql.Request();
@@ -197,7 +197,7 @@ async function findConnectionsByPhone(targetEntities) {
                             // Проверяем, нет ли уже такой связи (защита от дубликатов при пересечении условий)
                             const existingConnection = connectionsMap.get(targetEntityKey)[matchingPhone].find(conn => conn.connectedEntity.INN === row.contactINN && conn.connectedEntity.NameShort === connectedName);
                             if (!existingConnection) {
-                                console.log(`Добавление связи по телефону: целевая ${targetEntityKey} -> найденная ${connectedEntityKey} (из ${row.sourceTable}), телефон ${matchingPhone}`); // Лог
+                                // console.log(`Добавление связи по телефону: целевая ${targetEntityKey} -> найденная ${connectedEntityKey} (из ${row.sourceTable}), телефон ${matchingPhone}`); // Лог
                                 connectionsMap.get(targetEntityKey)[matchingPhone].push({
                                     connectedEntity: {
                                         INN: row.contactINN,
@@ -208,7 +208,7 @@ async function findConnectionsByPhone(targetEntities) {
                                     connectionDetails: `Совпадение по телефону: ${matchingPhone}`
                                 });
                             } else {
-                                console.log(`Связь уже существует: целевая ${targetEntityKey} -> найденная ${connectedEntityKey}, телефон ${matchingPhone}`); // Лог
+                                // console.log(`Связь уже существует: целевая ${targetEntityKey} -> найденная ${connectedEntityKey}, телефон ${matchingPhone}`); // Лог
                             }
                         });
                     } else {

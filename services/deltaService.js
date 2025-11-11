@@ -110,13 +110,38 @@ async function fetchDeltaPerson(query) {
 }
 
 // --- ФУНКЦИЯ: Запрос к эндпоинту ip ---
+// services/deltaService.js
+
+// ... (ваш остальной код до fetchDeltaIP) ...
+
+// --- ФУНКЦИЯ: Запрос к эндпоинту ip ---
 async function fetchDeltaIP(query) {
     if (!token) return [];
-    const url = `https://service.deltasecurity.ru/api2/find/ip?query=${encodeURIComponent(query)}&token=${token}`;
+    // Проверим, является ли query ИНН (10 или 12 для ИП) или ОГРНИП (15 для ИП)
+    // Или используем query как альтернативный параметр
+    const isINN = /^\d{10,12}$/.test(query);
+    const isOGRNIP = /^\d{15}$/.test(query);
+    let url;
+    if (isOGRNIP) {
+        url = `https://service.deltasecurity.ru/api2/find/ip?ogrnip=${query}&token=${token}`;
+    } else if (isINN) {
+        url = `https://service.deltasecurity.ru/api2/find/ip?inn=${query}&token=${token}`;
+    } else {
+        // Если не ИНН/ОГРНИП, используем query
+        url = `https://service.deltasecurity.ru/api2/find/ip?query=${encodeURIComponent(query)}&token=${token}`;
+    }
     console.log(`[Delta API] Выполняем запрос к ip: ${url}`);
 
     try {
         const response = await axios.get(url);
+
+        // Проверяем, не вернулся ли HTML (ошибка)
+        if (response.headers['content-type'] && response.headers['content-type'].includes('text/html')) {
+            console.error(`[Delta API] Получен HTML-ответ от ip, возможно ошибка: ${url}`);
+            console.error(`[Delta API] Тело ответа: ${response.data.substring(0, 200)}...`); // Лог первых 200 символов
+            return []; // Возвращаем пустой массив
+        }
+
         console.log(`[Delta API] Ответ от ip (статус):`, response.data.status_id, response.data.status_text);
 
         if (response.data.status_id === 1 && Array.isArray(response.data.result)) {
@@ -124,14 +149,22 @@ async function fetchDeltaIP(query) {
             return response.data.result.map(item => normalizeDeltaResult(item, 'ip'));
         } else {
             console.log('[Delta API] IP: Нет данных или ошибка в формате ответа.');
+            console.log('[Delta API] Тело ответа:', response.data); // Для отладки
             return [];
         }
     } catch (error) {
-        console.error('[Delta API] Ошибка при запросе к ip:', error.response?.data || error.message);
-        return [];
+        // Проверим, не была ли ошибка связана с парсингом HTML
+        if (error.response && error.response.data && typeof error.response.data === 'string' && error.response.data.includes('html')) {
+             console.error(`[Delta API] Ошибка при запросе к ip: получен HTML-ответ (ошибка на стороне Delta). URL: ${url}`);
+             console.error(`[Delta API] Тело ошибки: ${error.response.data.substring(0, 200)}...`);
+        } else {
+             console.error('[Delta API] Ошибка при запросе к ip:', error.response?.data || error.message);
+        }
+        return []; // Возвращаем пустой массив даже при ошибке
     }
 }
 
+// ... (остальной код deltaService.js) ...
 // --- ОСНОВНАЯ ФУНКЦИЯ: Вызов всех подходящих эндпоинтов ---
 async function fetchDeltaData(query) {
     if (!token) {

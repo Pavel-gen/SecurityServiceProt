@@ -3,53 +3,61 @@
 import { findConnectionsByEmail } from "./connectionByEmail.js";
 import { findConnectionsByINN } from "./connectionByINNService.js";
 import { findConnectionsByPhone } from "./connectionByPhoneService.js";
+import { getEntityKey } from '../utils/helper.js';
+
 
 async function findConnections(entities) {
     // --- НОРМАЛИЗАЦИЯ ВХОДНЫХ ДАННЫХ ---
-
     const normalizedEntities = entities.map(normalizeEntityForConnections);
-    console.log("Нормализованные сущности для поиска связей:", normalizedEntities);
+    // console.log("Нормализованные сущности для поиска связей:", normalizedEntities);
 
-    // --- ИНТЕГРАЦИЯ СВЯЗЕЙ ЧЕРЕЗ МОДЕЛЬ ---
     console.log(`Найдено ${normalizedEntities.length} нормализованных сущностей для поиска связей.`);
-    const connectionsMap = new Map(); // Для хранения всех связей
 
     // --- НОВЫЙ БЛОК: Поиск связей по email ---
+    // Используем универсальную проверку ключа
     const entitiesWithMailAndKey = normalizedEntities.filter(entity => {
-         const entityKey = entity.UNID || entity.fzUID || entity.cpUID || entity.PersonUNID;
-         return entityKey && entity.eMail && entity.eMail.trim() !== '';
+         // const entityKey = entity.UNID || entity.fzUID || entity.cpUID || entity.PersonUNID; // СТАРАЯ ЛОГИКА
+         // return entityKey && entity.eMail && entity.eMail.trim() !== '';
+         return getEntityKey(entity) && entity.eMail && entity.eMail.trim() !== '';
     });
     console.log(`Найдено ${entitiesWithMailAndKey.length} сущностей с ключом и email для поиска связей.`);
-    // const emailConnectionsMap = await findConnectionsByEmail(entitiesWithMailAndKey);
+    // const emailConnectionsMap = await findConnectionsByEmail(entitiesWithMailAndKey); // Временно отключено, если не реализована новая версия
 
     // --- НОВЫЙ БЛОК: Поиск связей по телефону ---
+    // Используем универсальную проверку ключа
     const entitiesWithPhoneAndKey = normalizedEntities.filter(entity => {
-         const entityKey = entity.UNID || entity.fzUID || entity.cpUID || entity.PersonUNID;
+         // const entityKey = entity.UNID || entity.fzUID || entity.cpUID || entity.PersonUNID; // СТАРАЯ ЛОГИКА
          const hasPhone = entity.PhoneNum || entity.fzPhoneM || entity.cpPhoneMob || entity.cpPhoneWork || entity.Phone;
-         return entityKey && hasPhone;
+         // return entityKey && hasPhone;
+         return getEntityKey(entity) && hasPhone;
     });
     console.log(`Найдено ${entitiesWithPhoneAndKey.length} сущностей с ключом и телефоном для поиска связей.`);
     const phoneConnectionsMap = await findConnectionsByPhone(entitiesWithPhoneAndKey);
 
     // --- НОВЫЙ БЛОК: Поиск связей по ИНН ---
+    // Используем универсальную проверку ключа
     const entitiesWithINN = normalizedEntities.filter(entity => {
-         const entityKey = entity.UNID || entity.fzUID || entity.cpUID || entity.PersonUNID; // Добавляем PersonUNID
+         // const entityKey = entity.UNID || entity.fzUID || entity.cpUID || entity.PersonUNID; // СТАРАЯ ЛОГИКА
          // Используем нормализованное поле INN
-         return entityKey && entity.INN && entity.INN.trim() !== '';
+         // return entityKey && entity.INN && entity.INN.trim() !== '';
+         return getEntityKey(entity) && entity.INN && entity.INN.trim() !== '';
     });
     console.log(`Найдено ${entitiesWithINN.length} сущностей с ключом и INN для поиска связей.`);
-    console.log("Сущности с ИНН:", entitiesWithINN); // Лог для проверки
+    // console.log("Сущности с ИНН (включая Delta):", entitiesWithINN); // Лог для проверки
     const innConnectionsMap = await findConnectionsByINN(entitiesWithINN);
 
     // --- СОБИРАЕМ СВЯЗИ В ОДИН ОБЪЕКТ ---
     const allResultsWithConnections = normalizedEntities.map(item => {
-        const entityKey = item.UNID || item.fzUID || item.cpUID || item.PersonUNID;
+        // const entityKey = item.UNID || item.fzUID || item.cpUID || item.PersonUNID; // СТАРАЯ ЛОГИКА
+        const entityKey = getEntityKey(item); // ИСПОЛЬЗУЕМ УНИВЕРСАЛЬНУЮ ФУНКЦИЮ
         let entityConnections = [];
 
-        // Добавляем связи по email
-        if (entityKey && entitiesWithMailAndKey.some(e => (e.UNID || e.fzUID || e.cpUID || e.PersonUNID) === entityKey)) {
-            // Реализация для email, если нужна
-        }
+        // Добавляем связи по email (если реализована новая версия findConnectionsByEmail)
+        // if (entityKey && entitiesWithMailAndKey.some(e => getEntityKey(e) === entityKey)) {
+        //     // Реализация для email, если нужна
+        //     // const emailConns = emailConnectionsMap.get(entityKey) || {};
+        //     // ... добавление в entityConnections
+        // }
 
         // Добавляем связи по телефону
         if (entityKey && phoneConnectionsMap.has(entityKey)) {
@@ -96,33 +104,44 @@ async function findConnections(entities) {
              const prevWorkEntitiesForThisINN = normalizedEntities.filter(e => e.type === 'prevwork' && e.INN === resultItem.INN && e.PersonUNID);
              // Извлекаем их PersonUNID
              const personUNIDsOfPrevWork = prevWorkEntitiesForThisINN.map(e => e.PersonUNID);
-
              // Теперь ищем в connectionsMap (которая была сформирована findConnectionsByINN) связи для этих PersonUNID
+             // Нужно получить оригинальную innConnectionsMap, чтобы найти связи для PersonUNID
+             // Это сложнее, так как теперь связи прикреплены к конечным сущностям.
+             // Лучше это делать внутри findConnectionsByINN, как вы и делали ранее, но с учётом Delta-ключей.
+             // Или адаптировать эту логику здесь, используя getEntityKey.
              for (const personUNID of personUNIDsOfPrevWork) {
-                 if (innConnectionsMap.has(personUNID)) {
-                     const prevWorkConnections = innConnectionsMap.get(personUNID) || {};
-                     // Добавляем все группы связей из prevWork к юр.лицу
-                     for (const [prevWorkINNKey, connections] of Object.entries(prevWorkConnections)) {
-                         // Создаём или находим группу связей по ИНН для юрлица
-                         let juridicalINNConnectionGroup = resultItem.connections.find(conn => conn.type === 'inn' && conn.subtype === 'inn_match' && conn.contact === prevWorkINNKey);
-                         if (!juridicalINNConnectionGroup) {
-                             juridicalINNConnectionGroup = {
-                                 contact: prevWorkINNKey,
-                                 type: 'inn',
-                                 subtype: 'inn_match',
-                                 connections: []
-                             };
-                             resultItem.connections.push(juridicalINNConnectionGroup);
+                 // Используем PersonUNID как ключ для поиска в innConnectionsMap
+                 // if (innConnectionsMap.has(personUNID)) { // Это работало, когда PersonUNID был ключом в connectionsMap
+                 // Теперь PersonUNID - это значение в поле, но сама prevwork-сущность может иметь другой ключ.
+                 // Нужно найти ключ prevwork-сущности, у которой PersonUNID совпадает.
+                 const prevWorkEntity = normalizedEntities.find(e => e.type === 'prevwork' && e.INN === resultItem.INN && e.PersonUNID === personUNID);
+                 if (prevWorkEntity) {
+                     const prevWorkEntityKey = getEntityKey(prevWorkEntity);
+                     if (prevWorkEntityKey && innConnectionsMap.has(prevWorkEntityKey)) {
+                         const prevWorkConnections = innConnectionsMap.get(prevWorkEntityKey) || {};
+                         // Добавляем все группы связей из prevWork к юр.лицу
+                         for (const [prevWorkINNKey, connections] of Object.entries(prevWorkConnections)) {
+                             // Создаём или находим группу связей по ИНН для юрлица
+                             let juridicalINNConnectionGroup = resultItem.connections.find(conn => conn.type === 'inn' && conn.subtype === 'inn_match' && conn.contact === prevWorkINNKey);
+                             if (!juridicalINNConnectionGroup) {
+                                 juridicalINNConnectionGroup = {
+                                     contact: prevWorkINNKey,
+                                     type: 'inn',
+                                     subtype: 'inn_match',
+                                     connections: []
+                                 };
+                                 resultItem.connections.push(juridicalINNConnectionGroup);
+                             }
+                             // Добавляем связи из prevWork к группе юрлица
+                             juridicalINNConnectionGroup.connections.push(...connections);
                          }
-                         // Добавляем связи из prevWork к группе юрлица
-                         juridicalINNConnectionGroup.connections.push(...connections);
                      }
                  }
              }
         }
     }
 
-    // Пересчитываем connectionsCount после добавления связей
+    // Пересчитываем connectionsCount после добавления связей из prevWork
     allResultsWithConnections.forEach(item => {
         item.connectionsCount = item.connections.length;
     });

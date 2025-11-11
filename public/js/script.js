@@ -319,7 +319,7 @@ function createCardHtml(item, tabName) {
                                 sourceDescription = 'Сотрудник';
                                 break;
                             case 'contperson':
-                                sourceDescription = 'Контактное лицо';
+                                sourceDescription = 'Таблица контактных лиц';
                                 break;
                             default:
                                 sourceDescription = sourceTable; // Используем как есть, если не распознали
@@ -330,10 +330,39 @@ function createCardHtml(item, tabName) {
                         baseNameDescription = ''; // Delta не имеет BaseName
                     }
 
+const connectionDetails = conn.connectionDetails; // Основная строка
+const employeeInfo = conn.employeeInfo; // Структурированные данные сотрудника
+
+// ... (определение иконки, статуса, источника) ...
+
+// --- НАЧАЛО: Формирование HTML для деталей сотрудника ---
+                    let employeeDetailsHtml = '';
+                    if (employeeInfo) { // Проверяем, есть ли объект employeeInfo
+                        employeeDetailsHtml = '<div class="employee-details">'; // Контейнер для деталей сотрудника
+                        if (employeeInfo.phFunction) {
+                            employeeDetailsHtml += `<div class="emp-position">Должность: ${employeeInfo.phFunction}</div>`;
+                        }
+                        if (employeeInfo.phEventType) {
+                            employeeDetailsHtml += `<div class="emp-event">Событие: ${employeeInfo.phEventType}</div>`;
+                        }
+                        if (employeeInfo.phDate) {
+                            employeeDetailsHtml += `<div class="emp-date">Дата: ${employeeInfo.phDate}</div>`;
+                        }
+                        // Добавьте другие поля, если нужно
+                        employeeDetailsHtml += '</div>';
+                    }
+                    // --- КОНЕЦ: Формирование HTML для деталей сотрудника ---
+
+                    // Формируем основной HTML для связи
                     innSectionHtml += `
                         <div class="connection-detail">
                             <i class="${connectedIcon}"></i>
-                            ${connectedName} (${statusDescription}, ${sourceDescription}${baseNameDescription})
+                            <div class="connection-info">
+                                <div class="connected-name">${connectedName}</div>
+                                <div class="connection-meta">(${statusDescription}, ${sourceDescription}${baseNameDescription})</div>
+                                <!-- Вставляем детали сотрудника, если они есть -->
+                                ${employeeDetailsHtml}
+                            </div>
                         </div>
                     `;
                     connectionCount++; // Увеличиваем счетчик на 1 за каждую связь

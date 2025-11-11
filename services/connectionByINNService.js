@@ -1,34 +1,103 @@
 import sql from 'mssql'
 import { determineEntityType } from '../utils/helper.js';
+import { getEntityKey } from '../utils/helper.js';
 
-async function findConnectionsByINN(targetEntities, request) {
+
+
+// --- ОСНОВНАЯ ФУНКЦИЯ: Поиск связей по ИНН ---
+async function findConnectionsByINN(targetEntities) {
+    console.log("Запуск findConnectionsByINN");
+    // console.log("Входные targetEntities:", targetEntities);
+
+    // --- ШАГ 1: Подготовка ---
     // Собираем уникальные ИНН из целевых сущностей
     const targetINNs = new Set();
-    const entitiesByKey = new Map(); // Используем ключ (UNID, fzUID, cpUID, PersonUNID)
+    // Используем getEntityKey для сопоставления
+    const entitiesByKey = new Map();
 
     targetEntities.forEach(entity => {
-        const entityKey = entity.UNID || entity.fzUID || entity.cpUID || entity.PersonUNID;
+        const entityKey = getEntityKey(entity);
         if (entityKey && entity.INN && entity.INN.trim() !== '') {
             targetINNs.add(entity.INN);
             entitiesByKey.set(entityKey, entity);
+            console.log(`Добавлена сущность с ключом ${entityKey} и ИНН ${entity.INN} в entitiesByKey`);
+        } else {
+            console.log(`Сущность не имеет ключа или ИНН, пропускаем:`, entity);
         }
     });
 
+    // console.log("Entities by key: ", entitiesByKey);
+
     const innArray = Array.from(targetINNs).filter(inn => inn);
-
     console.log("Целевые ИНН для поиска связей:", innArray);
+    console.log("entitiesByKey размер:", entitiesByKey.size);
 
-    const connectionsMap = new Map();
+    if (innArray.length === 0) {
+        console.log("Нет ИНН для поиска связей (юр/физ лица).");
+        // Даже если нет ИНН, нужно инициализировать connectionsMap для сущностей prevwork
+        const connectionsMap = new Map();
+        entitiesByKey.forEach((entity, entityKey) => {
+            if (!connectionsMap.has(entityKey)) {
+                connectionsMap.set(entityKey, {});
+            }
+        });
+        // Обработка prevwork (если она нужна даже без ИНН в других сущностях)
+        await processPrevWork(entitiesByKey, connectionsMap);
+        return connectionsMap;
+    }
+
     // Инициализируем connectionsMap для всех целевых сущностей по их ключу
+    const connectionsMap = new Map();
     entitiesByKey.forEach((entity, entityKey) => {
         if (!connectionsMap.has(entityKey)) {
             connectionsMap.set(entityKey, {});
         }
     });
 
-    // --- НОВЫЙ БЛОК: Обработка сущностей типа 'prevwork' ---
-    // Цель: Найти ФИО для PersonUNID, содержащихся в сущностях 'prevwork'
-    const prevWorkEntities = targetEntities.filter(entity => entity.type === 'prevwork' && entity.PersonUNID);
+    // --- ШАГ 2: Обработка сущностей типа 'prevwork' ---
+    // (Эта логика может оставаться отдельной, так как она специфична)
+    await processPrevWork(entitiesByKey, connectionsMap);
+
+    // --- ШАГ 3: Поиск связей в БД по ИНН ---
+    const fullINNQuery = buildINNQuery(innArray);
+    // console.log("Выполняемый SQL для ИНН (поиск связей для юр/физ лиц):", fullINNQuery);
+
+    const innRequest = new sql.Request();
+    innArray.forEach((inn, index) => {
+        innRequest.input(`inn${index}`, sql.VarChar, inn);
+    });
+
+    try {
+        const innResult = await innRequest.query(fullINNQuery);
+        console.log("Количество результатов поиска по ИНН (юр/физ лица):", innResult.recordset.length);
+
+        // --- ШАГ 4: Сопоставление найденных сущностей с целевыми ---
+        await mapFoundEntitiesToTargets(innResult.recordset, entitiesByKey, connectionsMap, innArray);
+
+    } catch (err) {
+        console.error('Ошибка при поиске связей по ИНН (юр/физ лица):', err);
+        throw err; // Пробрасываем ошибку, если критична
+    }
+
+    // Выведем итоговый размер connectionsMap и несколько примеров
+    console.log(`Итоговый размер connectionsMap (ИНН): ${connectionsMap.size}`);
+    // for (const [key, value] of connectionsMap.entries()) {
+    //      console.log(`Ключ (entityKey) ${key}: количество групп связей: ${Object.keys(value).length}`);
+    //      for (const [groupKey, conns] of Object.entries(value)) {
+    //           console.log(`  - для ключа '${groupKey}': ${conns.length} связей`);
+    //           // Покажем первые 2, если их много
+    //           conns.slice(0, 2).forEach(conn => console.log(`    -> ${conn.connectedEntity.NameShort} (${conn.connectionStatus}, ${conn.connectionDetails})`));
+    //           if (conns.length > 2) console.log(`    ... и ещё ${conns.length - 2}`);
+    //      }
+    // }
+
+    return connectionsMap; // Возвращаем карту связей, сгруппированных по ключу и затем по ИНН
+}
+
+// --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Обработка prevwork ---
+async function processPrevWork(entitiesByKey, connectionsMap) {
+    console.log("Начало обработки prevwork в findConnectionsByINN");
+    const prevWorkEntities = Array.from(entitiesByKey.values()).filter(entity => entity.type === 'prevwork' && entity.PersonUNID);
     const personUNIDsToFetch = new Set(prevWorkEntities.map(entity => entity.PersonUNID));
 
     console.log("Найдены сущности 'prevwork' для обогащения ФИО. PersonUNID:", personUNIDsToFetch);
@@ -38,9 +107,9 @@ async function findConnectionsByINN(targetEntities, request) {
         const personDetailsMap = await findPersonDetailsByUNID(Array.from(personUNIDsToFetch));
 
         // Обновляем connectionsMap, добавляя "связь" с ФИО для каждой сущности 'prevwork'
-        // Ключ - это PersonUNID сущности 'prevwork'
+        // Ключ - это PersonUNID сущности 'prevwork' (которая сама по себе сущность)
         prevWorkEntities.forEach(prevWorkEntity => {
-            const entityKey = prevWorkEntity.PersonUNID;
+            const entityKey = prevWorkEntity.PersonUNID; // Ключом в connectionsMap будет PersonUNID, к которому привязано prevwork
             const personDetails = personDetailsMap.get(prevWorkEntity.PersonUNID);
 
             if (personDetails) {
@@ -92,209 +161,178 @@ async function findConnectionsByINN(targetEntities, request) {
     } else {
         console.log("Нет сущностей 'prevwork' для обогащения деталями физических лиц.");
     }
+}
+
+// --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Построение SQL-запроса ---
+function buildINNQuery(innArray) {
+    if (innArray.length === 0) return 'SELECT 1 as dummy WHERE 1=0'; // Пустой запрос, если нет ИНН
+
+    const innParams = innArray.map((inn, index) => `@inn${index}`);
+
+    // Запрос 1: Совпадения в CI_Contragent.INN
+    // Запрос 1: Совпадения в CI_Contragent.INN
+    const contragentINNQuery = `
+        SELECT
+            ci.UNID as contactUNID,
+            ci.INN as contactINN,
+            ci.NameShort as contactNameShort,
+            ci.NameFull as contactNameFull,
+            ci.UrFiz,
+            ci.fIP,
+            NULL as fzUID, -- NULL для соответствия UNION
+            NULL as cpUID, -- NULL для соответствия UNION
+            NULL as PersonUNID, -- NULL для соответствия UNION
+            NULL as fzFIO, -- NULL для соответствия UNION
+            NULL as phFunction, -- NULL для соответствия UNION
+            NULL as phEventType, -- NULL для соответствия UNION
+            NULL as phDate, -- NULL для соответствия UNION
+            'contragent' as sourceTable,
+            ci.UNID as entityKey,
+            ci.BaseName as baseName
+        FROM CI_Contragent_test ci
+        WHERE ci.INN IN (${innParams.join(', ')})
+    `;
+
+    // Запрос 3: Совпадения в CI_Employees.phOrgINN
+    const employeeINNQuery = `
+        SELECT
+            ce.phOrgINN as contactUNID,
+            ce.phOrgINN as contactINN,
+            ce.fzFIO as contactNameShort, -- <<< ИЗМЕНЕНО: Используем fzFIO как NameShort
+            ce.fzFIO as contactNameFull,  -- <<< ИЗМЕНЕНО: Используем fzFIO как NameFull
+            NULL as UrFiz, -- NULL для соответствия UNION
+            NULL as fIP,   -- NULL для соответствия UNION
+            ce.fzUID as fzUID,
+            NULL as cpUID, -- NULL для соответствия UNION
+            NULL as PersonUNID, -- NULL для соответствия UNION
+            ce.fzFIO as fzFIO, -- <<< ДОБАВЛЕНО: Поле fzFIO
+            ce.phFunction as phFunction, -- <<< ДОБАВЛЕНО: Поле должности
+            ce.phEventType as phEventType, -- <<< ДОБАВЛЕНО: Поле события
+            ce.phDate as phDate, -- <<< ДОБАВЛЕНО: Поле даты
+            'employee' as sourceTable,
+            ce.fzUID as entityKey,
+            ce.BaseName as baseName
+        FROM CI_Employees_test ce
+        WHERE ce.phOrgINN IN (${innParams.join(', ')})
+    `;
+
+    // Запрос 4: Совпадения в CI_ContPersons.conINN
+    const contPersonINNQuery = `
+        SELECT
+            cip.conINN as contactUNID,
+            cip.conINN as contactINN,
+            cip.cpNameFull as contactNameShort,
+            cip.cpNameFull as contactNameFull,
+            NULL as UrFiz, -- NULL для соответствия UNION
+            NULL as fIP,   -- NULL для соответствия UNION
+            NULL as fzUID, -- NULL для соответствия UNION
+            cip.cpUID as cpUID,
+            NULL as PersonUNID, -- NULL для соответствия UNION
+            NULL as fzFIO, -- NULL для соответствия UNION
+            NULL as phFunction, -- NULL для соответствия UNION
+            NULL as phEventType, -- NULL для соответствия UNION
+            NULL as phDate, -- NULL для соответствия UNION
+            'contperson' as sourceTable,
+            cip.cpUID as entityKey,
+            cip.BaseName as baseName
+        FROM CI_ContPersons_test cip
+        WHERE cip.conINN IN (${innParams.join(', ')})
+    `;
 
 
-    // --- СТАРЫЙ БЛОК: Поиск связей по ИНН для остальных сущностей (contragent, employee, contperson) ---
-    // (Остальная часть функции, если нужно искать связи по ИНН для юр/физ лиц)
-    // Этот блок может остаться, если вы хотите, чтобы findConnectionsByINN также искала
-    // другие сущности (contragent, employee, contperson) с тем же ИНН, как описано выше.
-    // Если только для prevwork, то оставляем только новый блок.
+    return `${contragentINNQuery}  UNION ALL ${employeeINNQuery} UNION ALL ${contPersonINNQuery}`;
+}
 
-    if (innArray.length > 0) {
-        // Подготовим параметры для WHERE - ищем точное совпадение ИНН
-        const innParams = innArray.map((inn, index) => `@inn${index}`);
+// --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Сопоставление найденных сущностей с целевыми ---
+async function mapFoundEntitiesToTargets(foundRecordset, entitiesByKey, connectionsMap, targetINNs) {
+    console.log("Начало сопоставления найденных сущностей с целевыми");
+    console.log('connectionMap: ', connectionsMap);
+    foundRecordset.forEach(row => {
+        // Определяем тип и ключ найденной сущности (connectedEntity)
+        let connectedType = 'unknown';
+        // connectedName теперь может быть ФИО, если это сотрудник
+        let connectedName = row.contactNameShort || row.contactNameFull || row.contactINN || 'N/A';
+        let connectedEntityKey = row.entityKey; // Уникальный ключ из результата SQL
+        let connectionStatus = 'unknown_status';
+        let baseName = row.baseName || null;
 
-        // Запрос 1: Совпадения в CI_Contragent.INN
-        const contragentINNQuery = `
-            SELECT
-                ci.UNID as contactUNID,
-                ci.INN as contactINN,
-                ci.NameShort as contactNameShort,
-                ci.NameFull as contactNameFull,
-                ci.UrFiz,
-                ci.fIP,
-                NULL as fzUID,
-                NULL as cpUID,
-                NULL as PersonUNID,
-                'contragent' as sourceTable,
-                ci.UNID as entityKey,
-                ci.BaseName as baseName -- Добавляем BaseName
-            FROM CI_Contragent ci
-            WHERE ci.INN IN (${innParams.join(', ')})
-        `;
+        if (!connectedEntityKey) {
+            console.log(`Предупреждение: Не удалось определить ключ для найденной сущности из ${row.sourceTable}. Пропускаем.`, row);
+            return;
+        }
 
-        // Запрос 2: Совпадения в CF_PrevWork.INN (не для целей поиска ФИО, а как потенциальные связи)
-        const prevWorkINNQuery = `
-            SELECT
-                NULL as contactUNID,
-                cpw.INN as contactINN,
-                cpw.Caption as contactNameShort,
-                cpw.Caption as contactNameFull,
-                NULL as UrFiz,
-                NULL as fIP,
-                NULL as fzUID,
-                NULL as cpUID,
-                cpw.PersonUNID as PersonUNID, -- Ключ к физ. лицу
-                'prevwork' as sourceTable,
-                cpw.PersonUNID as entityKey, -- Используем PersonUNID как ключ
-                NULL as baseName -- BaseName нет в CF_PrevWork
-            FROM CF_PrevWork cpw
-            WHERE cpw.INN IN (${innParams.join(', ')})
-        `;
+        // Извлекаем дополнительные поля сотрудника (могут быть null)
+        let fzFIO = row.fzFIO || null;
+        let phFunction = row.phFunction || null;
+        let phEventType = row.phEventType || null;
+        let phDate = row.phDate ? new Date(row.phDate).toLocaleDateString() : null;
 
-        // Запрос 3: Совпадения в CI_Employees.phOrgINN
-        const employeeINNQuery = `
-            SELECT
-                ce.phOrgINN as contactUNID,
-                ce.phOrgINN as contactINN,
-                ce.phOrgName as contactNameShort,
-                ce.phOrgName as contactNameFull,
-                NULL as UrFiz,
-                NULL as fIP,
-                ce.fzUID as fzUID,
-                NULL as cpUID,
-                NULL as PersonUNID,
-                'employee' as sourceTable,
-                ce.fzUID as entityKey,
-                ce.BaseName as baseName -- Добавляем BaseName
-            FROM CI_Employees ce
-            WHERE ce.phOrgINN IN (${innParams.join(', ')})
-        `;
+        // Определяем тип и статус
+        if (row.sourceTable === 'contragent') {
+            connectedType = determineEntityType(row.UrFiz, row.fIP);
+            connectionStatus = 'organization_match';
+        } else if (row.sourceTable === 'prevwork') {
+            connectedType = 'physical';
+            connectionStatus = 'former_employee';
+        } else if (row.sourceTable === 'employee') { // <<< Обработка 'employee'
+            connectedType = 'physical';
+            // connectionStatus определяется по phEventType, как раньше
+            connectionStatus = (phEventType && phEventType.toLowerCase().includes('увол')) ? 'former_employee' : 'current_employee';
+        } else if (row.sourceTable === 'contperson') {
+            connectedType = 'physical';
+            connectionStatus = 'contact_person';
+        }
 
-        // Запрос 4: Совпадения в CI_ContPersons.conINN
-        const contPersonINNQuery = `
-            SELECT
-                cip.conINN as contactUNID,
-                cip.conINN as contactINN,
-                cip.cpNameFull as contactNameShort,
-                cip.cpNameFull as contactNameFull,
-                NULL as UrFiz,
-                NULL as fIP,
-                NULL as fzUID,
-                cip.cpUID as cpUID,
-                NULL as PersonUNID,
-                'contperson' as sourceTable,
-                cip.cpUID as entityKey,
-                cip.BaseName as baseName -- Добавляем BaseName
-            FROM CI_ContPersons cip
-            WHERE cip.conINN IN (${innParams.join(', ')})
-        `;
+        const foundINN = row.contactINN;
 
-        const fullINNQuery = `${contragentINNQuery} UNION ALL ${prevWorkINNQuery} UNION ALL ${employeeINNQuery} UNION ALL ${contPersonINNQuery}`;
+        if (!targetINNs.includes(foundINN)) {
+             console.log(`Найденная сущность ${connectedEntityKey} имеет ИНН '${foundINN}', но оно не является целевым. Пропускаем.`);
+             return;
+        }
 
-        console.log("Выполняемый SQL для ИНН (поиск связей для юр/физ лиц):", fullINNQuery);
+        entitiesByKey.forEach((targetEntity, targetEntityKey) => {
+            if (targetEntity.type === 'prevwork') {
+                 return;
+            }
 
-        const innRequest = new sql.Request();
-        innArray.forEach((inn, index) => {
-            innRequest.input(`inn${index}`, sql.VarChar, inn);
+            if (targetEntity.INN === foundINN) {
+                if (connectedEntityKey !== targetEntityKey) {
+                    if (!connectionsMap.get(targetEntityKey)[foundINN]) {
+                        connectionsMap.get(targetEntityKey)[foundINN] = [];
+                    }
+
+                    // Подготовим строку с деталями сотрудника, если это тип 'employee'
+                    let employeeInfo = null; // Инициализируем null
+                    if (row.sourceTable === 'employee') {
+                        employeeInfo = {
+                            fzFIO: fzFIO,
+                            phFunction: phFunction,
+                            phEventType: phEventType,
+                            phDate: phDate
+                        };
+                    }
+
+                    connectionsMap.get(targetEntityKey)[foundINN].push({
+                        connectedEntity: {
+                            INN: row.contactINN,
+                            NameShort: connectedName,
+                            NameFull: row.contactNameFull,
+                            type: connectedType,
+                            sourceTable: row.sourceTable,
+                            source: 'local',
+                            baseName: baseName,
+                            PersonUNID: row.PersonUNID
+                        },
+                        connectionType: 'inn_match',
+                        connectionStatus: connectionStatus,
+                        connectionDetails: `Совпадение по ИНН: ${foundINN}, найдено в таблице ${row.sourceTable}, статус: ${connectionStatus}`,
+                        // <<< ДОБАВЛЕНО: Поле с деталями сотрудника >>>
+                        employeeInfo: employeeInfo
+                    });
+                }
+            }
         });
-
-        try {
-            const innResult = await innRequest.query(fullINNQuery);
-            console.log("Количество результатов поиска по ИНН (юр/физ лица):", innResult.recordset.length);
-
-            // --- СОПОСТАВЛЕНИЕ НАЙДЕННЫХ СУЩНОСТЕЙ С ЦЕЛЕВЫМИ (юр/физ лица) ---
-            innResult.recordset.forEach(row => {
-                // Определяем тип и ключ найденной сущности (connectedEntity)
-                let connectedType = 'unknown';
-                let connectedName = row.contactNameShort || row.contactNameFull || row.contactINN || 'N/A';
-                let connectedEntityKey = row.entityKey; // Уникальный ключ из результата SQL
-                let connectionStatus = 'unknown_status'; // Статус связи: например, 'former_employee', 'current_employee', 'contact_person'
-                let baseName = row.baseName || null; // Имя базы данных источника
-
-                if (!connectedEntityKey) {
-                    console.log(`Предупреждение: Не удалось определить ключ для найденной сущности из ${row.sourceTable}. Пропускаем.`, row);
-                    return;
-                }
-
-                // Определяем тип
-                if (row.sourceTable === 'contragent') {
-                    connectedType = determineEntityType(row.UrFiz, row.fIP);
-                    connectionStatus = 'organization_match'; // Совпадение по ИНН организации
-                } else if (row.sourceTable === 'prevwork') {
-                    connectedType = 'physical'; // Это физлицо из предыдущего места работы
-                    connectionStatus = 'former_employee'; // Бывший сотрудник
-                } else if (row.sourceTable === 'employee') {
-                    connectedType = 'physical'; // Предполагаем, что это физлицо - сотрудник
-                    connectionStatus = (row.phEventType && row.phEventType.toLowerCase().includes('увол')) ? 'former_employee' : 'current_employee';
-                } else if (row.sourceTable === 'contperson') {
-                    connectedType = 'physical'; // Предполагаем, что это физлицо - контактное лицо
-                    connectionStatus = 'contact_person';
-                }
-
-                const foundINN = row.contactINN;
-
-                // Проверяем, содержится ли найденное ИНН в целевых ИНН
-                if (!innArray.includes(foundINN)) {
-                     console.log(`Найденная сущность ${connectedEntityKey} имеет ИНН '${foundINN}', но оно не является целевым. Пропускаем.`);
-                     return;
-                }
-
-                // console.log(`Обработка найденной сущности: ${connectedEntityKey}, INN: ${foundINN}, Name: ${connectedName}`); // Лог
-
-                // Перебираем ВСЕ целевые сущности
-                entitiesByKey.forEach((targetEntity, targetEntityKey) => {
-                    // Пропускаем сущности типа 'prevwork' в этом цикле, чтобы не ломать логику
-                    if (targetEntity.type === 'prevwork') {
-                         return; // Переходим к следующей итерации
-                    }
-
-                    // Проверяем, что целевая сущность имеет ИНН и оно совпадает с найденным
-                    if (targetEntity.INN === foundINN) {
-                        // Проверяем, что найденная сущность не является целевой (по ключу)
-                        if (connectedEntityKey !== targetEntityKey) {
-                            // console.log(`Совпадение найдено: целевая сущность ${targetEntityKey}, найденная сущность ${connectedEntityKey}`); // Лог
-
-                            if (!connectionsMap.get(targetEntityKey)[foundINN]) {
-                                connectionsMap.get(targetEntityKey)[foundINN] = [];
-                            }
-                            // Лог перед добавлением
-                            // console.log(`Добавление связи по ИНН: целевая ${targetEntityKey} -> найденная ${connectedEntityKey}, ИНН ${foundINN}`); // Лог
-                            connectionsMap.get(targetEntityKey)[foundINN].push({
-                                connectedEntity: {
-                                    INN: row.contactINN,
-                                    NameShort: connectedName, // Может быть NameShort/Full org или Caption
-                                    type: connectedType,
-                                    sourceTable: row.sourceTable, // Откуда пришла информация
-                                    // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
-                                    source: 'local', // Это локальная сущность из БД
-                                    baseName: baseName, // Добавляем имя базы данных источника
-                                    // ---
-                                    PersonUNID: row.PersonUNID // Добавляем PersonUNID, если он есть (например, для prevwork)
-                                },
-                                connectionType: 'inn_match',
-                                connectionStatus: connectionStatus, // Добавляем статус
-                                connectionDetails: `Совпадение по ИНН: ${foundINN}, найдено в таблице ${row.sourceTable}, статус: ${connectionStatus}`
-                            });
-                        } else {
-                            // console.log(`Пропуск: целевая и найденная сущности совпадают по ключу ${targetEntityKey}`); // Лог
-                        }
-                    }
-                });
-            });
-
-        } catch (err) {
-            console.error('Ошибка при поиске связей по ИНН (юр/физ лица):', err);
-            throw err; // Пробрасываем ошибку, если критична
-        }
-    } else {
-        console.log("Нет ИНН для поиска связей (юр/физ лица).");
-    }
-
-
-    // Выведем итоговый размер connectionsMap и несколько примеров
-    console.log(`Итоговый размер connectionsMap (ИНН): ${connectionsMap.size}`);
-    for (const [key, value] of connectionsMap.entries()) {
-        console.log(`Ключ (entityKey) ${key}: количество групп связей: ${Object.keys(value).length}`);
-        for (const [groupKey, conns] of Object.entries(value)) {
-             console.log(`  - для ключа '${groupKey}': ${conns.length} связей`);
-             // Покажем первые 2, если их много
-             conns.slice(0, 2).forEach(conn => console.log(`    -> ${conn.connectedEntity.NameShort} (${conn.connectionStatus}, ${conn.connectionDetails})`));
-             if (conns.length > 2) console.log(`    ... и ещё ${conns.length - 2}`);
-        }
-    }
-
-    return connectionsMap; // Возвращаем карту связей, сгруппированных по ключу и затем по ИНН
+    });
 }
 async function findPersonDetailsByUNID(personUNIDs) {
     console.log("Поиск детальной информации о физических лицах для PersonUNIDs:", personUNIDs);
@@ -371,7 +409,7 @@ async function findPersonDetailsByUNID(personUNIDs) {
 
     const fullPersonQuery = `${personsQuery} UNION ALL ${employeesQuery} UNION ALL ${contPersonsQuery} UNION ALL ${contactsQuery}`;
 
-    console.log("Выполняемый SQL для поиска деталей физ. лиц:", fullPersonQuery);
+    // console.log("Выполняемый SQL для поиска деталей физ. лиц:", fullPersonQuery);
 
     const personRequest = new sql.Request();
     personUNIDs.forEach((unid, index) => {
