@@ -2,7 +2,7 @@
 import { performSearch } from './api.js';
 import { setState, setResults, setCurrentTab, getCurrentTab } from './state.js';
 import { updateTabBadges, updateResultsCount, toggleEmptyState, switchTab, toggleAdvancedSearch, changeSort, toggleSortDirection, applyFilters, exportData } from './ui.js';
-import { displayResults } from './render.js';
+import { displayResults } from './renderer.js';
 
 async function handleSearch() {
     const searchQuery = document.getElementById('searchInput').value.trim();

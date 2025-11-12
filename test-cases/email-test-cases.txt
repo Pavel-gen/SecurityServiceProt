@@ -1,0 +1,52 @@
+Тест-кейсы для поиска по Email:
+
+Цель: Проверить, что поиск по email находит все возможные связи, как прямые, так и косвенные, через промежуточную таблицу CF_Contacts.
+
+Вход: Email адрес (например, test@example.com).
+
+Кейс 1: Прямой поиск - Найти контрагентов по eMail
+- Условие: Ввести email, который есть в столбце eMail таблицы CI_Contragent_test.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'juridical'/'ip', sourceTable: 'contragent', NameShort: 'название_контрагента'.
+
+Кейс 2: Прямой поиск - Найти контактные лица по cpMail
+- Условие: Ввести email, который есть в столбце cpMail таблицы CI_ContPersons_test.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'contperson', NameShort: 'ФИО_контактного_лица'.
+
+Кейс 3: Прямой поиск - Найти работников по fzMail
+- Условие: Ввести email, который есть в столбце fzMail таблицы CI_Employees_test.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'employee', NameShort: 'ФИО_работника'.
+
+Кейс 4: Прямой поиск - Найти запись в CF_Contacts по Contact (если это email)
+- Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test (с ContactType, содержащим 'email' или просто '@').
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'contact', sourceTable: 'contact', NameShort: 'введённый_email'.
+
+Кейс 5: Косвенный поиск - CF_Contacts -> CF_Persons
+- Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CF_Persons_test.UNID.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'person_via_contact', NameShort: 'ФИО_из_CF_Persons'.
+
+Кейс 6: Косвенный поиск - CF_Contacts -> CI_Employees
+- Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CI_Employees_test.fzUID.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'employee_via_contact', NameShort: 'fzFIO_из_CI_Employees'.
+
+Кейс 7: Косвенный поиск - CF_Contacts -> CI_ContPersons
+- Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CI_ContPersons_test.cpUID.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'contperson_via_contact', NameShort: 'cpNameFull_из_CI_ContPersons'.
+
+Кейс 8: Прямой поиск - CF_PrevWork.EMail -> CF_Persons
+- Условие: Ввести email, который есть в столбце EMail таблицы CF_PrevWork_test. PersonUNID из этой записи должен существовать в CF_Persons_test.UNID.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'person_from_prevwork_email', NameShort: 'ФИО_из_CF_Persons', prevWorkCaption: 'Caption_из_CF_PrevWork'.
+
+Кейс 9: Косвенный поиск - CF_Contacts -> CF_PrevWork -> CF_Persons
+- Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CF_PrevWork_test.PersonUNID. PersonUNID из CF_PrevWork должен существовать в CF_Persons_test.UNID.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'person_from_prevwork_via_contact', NameShort: 'ФИО_из_CF_Persons', prevWorkCaption: 'Caption_из_CF_PrevWork'.
+
+

@@ -34,7 +34,7 @@ app.post('/api/search', async (req, res) => {
 
 
         // Шаг 4: Найти связи для объединённых результатов
-        const resultsWithConnections = await findConnections([...allTargetEntitiesForConnections, ...deltaResults]);
+        const resultsWithConnections = await findConnections([...deltaResults, ...allTargetEntitiesForConnections]);
 
         // console.log("RESULTS WITH CONNECTIONS: ", resultsWithConnections);
 

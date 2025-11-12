@@ -1,0 +1,86 @@
+@startuml
+!theme plain
+' Стиль для таблиц
+package "База Данных" {
+  entity "CF_Contacts" as Contacts {
+    PersonUNID: varchar
+    ContactType: varchar
+    Contact: varchar
+  }
+
+  entity "CI_Contragent" as Contragent {
+    UNID: varchar
+    INN: varchar
+    NameShort: varchar
+    PhoneNum: varchar
+    eMail: varchar
+    AddressUr: varchar
+  }
+
+  entity "CI_Employees" as Employees {
+    fzUID: varchar
+    fzFIO: varchar
+    fzPhone: varchar
+    fzMail: varchar
+    phOrgINN: varchar
+    fzINN: varchar
+  }
+
+  entity "CI_ContPersons" as ContPersons {
+    cpUID: varchar
+    conINN: varchar
+    cpNameFull: varchar
+    cpPhoneMob: varchar
+    cpMail: varchar
+  }
+
+  entity "CF_PrevWork" as PrevWork {
+    PersonUNID: varchar
+    INN: varchar
+    Caption: varchar
+    Phone: varchar
+    EMail: varchar
+  }
+
+  entity "CF_Persons" as Persons {
+    UNID: varchar
+    INN: varchar
+    FirstName: varchar
+    LastName: varchar
+    MiddleName: varchar
+    RegAddressPassport: varchar
+  }
+}
+
+' Связи
+' Поиск по email в CF_Contacts
+Contacts ||--o{ "Результаты поиска" : "Contact (если email)"
+
+' Связь CF_Contacts.PersonUNID с CF_Persons.UNID
+Contacts ||--|| Persons : "PersonUNID -> UNID"
+
+' Поиск по email в CI_Contragent
+Contragent ||--o{ "Результаты поиска" : "eMail"
+
+' Поиск по email в CI_Employees
+Employees ||--o{ "Результаты поиска" : "fzMail"
+
+' Поиск по email в CI_ContPersons
+ContPersons ||--o{ "Результаты поиска" : "cpMail"
+
+' Поиск по email в CF_PrevWork
+PrevWork ||--o{ "Результаты поиска" : "EMail"
+
+' Дополнительные связи, найденные через PersonUNID
+Persons ||--o{ Employees : "UNID -> fzUID (через PersonUNID)"
+Persons ||--o{ ContPersons : "UNID -> cpUID (через PersonUNID)"
+Persons ||--o{ PrevWork : "UNID -> PersonUNID"
+
+note right of Contacts : "ContactType может указывать,\n что Contact - это email"
+note right of Contragent : "eMail - прямое поле email"
+note right of Employees : "fzMail - прямое поле email"
+note right of ContPersons : "cpMail - прямое поле email"
+note right of PrevWork : "EMail - прямое поле email"
+note bottom of Persons : "Email может быть в строках адресов"
+
+@enduml

@@ -21,13 +21,7 @@ export function displayResults(tabName) {
     });
 }
 
-function createCardHtml(item, tabName) {
-    // --- ВАША СЛОЖНАЯ ЛОГИКА createCardHtml ОСТАЕТСЯ ЗДЕСЬ ---
-    // ... (скопируйте сюда вашу функцию createCardHtml из script.js, включая генерацию связей и JSON) ...
-    // Основные изменения:
-    // 1. Убедитесь, что toggleSection доступна: window.toggleSection = toggleSection; или используйте addEventListener внутри этой функции.
-    // 2. Убедитесь, что все переменные и функции, используемые внутри, определены или импортированы.
-
+function createCardHtml(item) {
     // Определяем тип и соответствующие иконки/статусы
     let icon = 'fas fa-question-circle';
     let status = '';
@@ -146,11 +140,160 @@ function createCardHtml(item, tabName) {
         const allConnectionsHtml = [];
 
         item.connections.forEach(connectionGroup => {
-            // ... (логика для email и phone, если нужна) ...
+            // --- НОВЫЙ БЛОК: Обработка связей по контактам (email, phone) ---
+            // Проверяем тип и подтип группы связей
+            if (connectionGroup.type === 'contact' && (connectionGroup.subtype === 'email' || connectionGroup.subtype === 'phone') && Array.isArray(connectionGroup.connections)) {
+                const contactValue = connectionGroup.contact; // Значение email или телефона
+                const connectionsList = connectionGroup.connections;
+                const contactTypeLabel = connectionGroup.subtype === 'email' ? 'Связи по Email' : 'Связи по Телефону'; // Метка для отображения
+                const contactTypeIcon = connectionGroup.subtype === 'email' ? 'fas fa-envelope' : 'fas fa-phone'; // Иконка для отображения
 
-            // --- НОВЫЙ БЛОК: Обработка связей по ИНН ---
-            if (connectionGroup.type === 'inn' && connectionGroup.subtype === 'inn_match' && Array.isArray(connectionGroup.connections)) {
-                const innValue = connectionGroup.contact; // ИНН, по которому была найдена связь
+                let contactSectionHtml = `
+                    <div class="info-item">
+                        <div class="info-icon"><i class="${contactTypeIcon}"></i></div>
+                        <div class="info-content">
+                            <div class="info-label">${contactTypeLabel}</div>
+                            <div class="info-value">${contactValue}</div>
+                        </div>
+                    </div>
+                    <div class="connections-details-container">
+                `;
+
+                // Перебираем каждую связь в группе
+                connectionsList.forEach(conn => {
+                    const connectedEntity = conn.connectedEntity;
+                    // Используем NameShort, NameFull или fallback на значение контакта или даже тип сущности
+                    const connectedName = connectedEntity.NameShort || connectedEntity.NameFull || contactValue || connectedEntity.type || 'N/A';
+                    const connectedType = connectedEntity.type || 'unknown';
+                    const connectionStatus = conn.connectionStatus;
+                    const sourceTable = connectedEntity.sourceTable;
+                    const baseName = connectedEntity.baseName;
+                    const source = connectedEntity.source;
+                    const prevWorkCaption = conn.connectedEntity.prevWorkCaption || null;
+
+
+                    // --- Определение иконки ---
+                    let connectedIcon = 'fas fa-question-circle';
+                    if (connectedType === 'juridical') connectedIcon = 'fas fa-building';
+                    else if (connectedType === 'ip') connectedIcon = 'fas fa-store';
+                    else if (connectedType === 'physical') connectedIcon = 'fas fa-user';
+                    else if (connectedType === 'contact') connectedIcon = 'fas fa-address-card'; // Иконка для самой сущности контакта
+
+                    // --- Определение статуса ---
+                    let statusDescription = 'Тип неизвестен';
+                    switch (sourceTable) {
+                        case 'contragent':
+                            statusDescription = 'Контрагент';
+                            break;
+                        case 'employee':
+                        case 'employee_via_contact':
+                            statusDescription = 'Сотрудник';
+                            break;
+                        case 'contperson':
+                        case 'contperson_via_contact':
+                            statusDescription = 'Контактное лицо';
+                            break;
+                        case 'person_via_contact':
+                        case 'person_from_prevwork_via_contact': // <<< Оба кейса - физлицо >>>
+                        case 'person_from_prevwork_email': // <<< Оба кейса - физлицо >>>
+                            statusDescription = 'Физлицо';
+                            break;
+                        case 'contact': // Сама запись контакта
+                            statusDescription = 'Найден в контактах';
+                            break;
+                        default:
+                            statusDescription = connectedType; // fallback
+                    }
+
+                    let sourceDescription = 'Источник неизвестен';
+                    let baseNameDescription = '';
+                    if (source === 'local') {
+                        switch (sourceTable) {
+                            case 'contragent':
+                                sourceDescription = 'Контрагенты';
+                                break;
+                            case 'employee':
+                                sourceDescription = 'Сотрудники';
+                                break;
+                            case 'contperson':
+                                sourceDescription = 'Конт.лица';
+                                break;
+                            case 'person_via_contact':
+                                sourceDescription = 'Персоны (через контакты)';
+                                break;
+                            case 'employee_via_contact':
+                                sourceDescription = 'Сотрудники (через контакты)';
+                                break;
+                            case 'contperson_via_contact':
+                                sourceDescription = 'Конт.лица (через контакты)';
+                                break;
+                            case 'person_from_prevwork_email':
+                                sourceDescription = 'Персоны (email в пред. работе)';
+                                break;
+                            case 'person_from_prevwork_via_contact':
+                                sourceDescription = 'Персоны (через пред. работу)';
+                                break;
+                            case 'contact':
+                                sourceDescription = 'Таблица контактов';
+                                break;
+                            default:
+                                sourceDescription = sourceTable; // fallback
+                        }
+                        baseNameDescription = baseName ? ` (БД: ${baseName})` : ' (БД: не указана)';
+                    } else if (source === 'delta') {
+                        sourceDescription = 'Delta Безопасность';
+                        baseNameDescription = '';
+                    }
+
+                    // --- Определение ДОПОЛНИТЕЛЬНОГО КОНТЕКСТА ---
+                    let additionalContext = '';
+                    // Уточнение для кейса PrevWork -> Person
+                    if (prevWorkCaption && (sourceTable === 'person_from_prevwork_email' || sourceTable === 'person_from_prevwork_via_contact')) {
+                        // Можно выбрать, как отображать: через пред. работу или email в ...
+                        // Вариант 1: Уточнение через prevWorkCaption
+                        additionalContext = ` (email в: "${prevWorkCaption}")`; // Для person_from_prevwork_email
+                        // additionalContext = ` (через пред. работу: "${prevWorkCaption}")`; // Для person_from_prevwork_via_contact
+                        // Вариант 2: Объединить для обоих кейсов
+                        additionalContext = ` (ранее работал в: "${prevWorkCaption}")`; // Подходит для обоих, если контекст ясен
+                    }
+                    // Уточнение для косвенных поисков
+                    switch (connectionStatus) { // connectionStatus может быть полезен для уточнения метода поиска
+                        case 'person_match_via_contact':
+                        case 'employee_match_via_contact':
+                        case 'contact_person_match_via_contact':
+                        case 'person_match_via_contact_from_prevwork': // <<< Новый статус для indirectContactToPrevWorkToPersonQuery >>>
+                            if (!additionalContext) { // Не перезаписываем prevWorkCaption
+                                additionalContext = ' (через контакты)';
+                            }
+                            break;
+                        // ... другие кейсы ...
+                    }
+                    // --- НЕТ employeeInfo для связей по email/phone (пока что) ---
+                    // const employeeInfo = conn.employeeInfo; // Предположим, что для email/phone его нет или оно обрабатывается отдельно
+                    // let employeeDetailsHtml = '';
+                    // if (employeeInfo) { ... }
+
+                    // Формируем HTML для одной связи
+                    contactSectionHtml += `
+                        <div class="connection-detail">
+                            <i class="${connectedIcon}"></i>
+                            <div class="connection-info">
+                                <div class="connected-name">${connectedName}</div>
+                                <div class="connection-meta">${statusDescription}, ${sourceDescription}${additionalContext}${baseNameDescription}</div>
+                                <!-- Детали сотрудника (если есть и применимо) -->
+                            </div>
+                        </div>
+                    `;
+                    connectionCount++;
+                });
+
+                contactSectionHtml += '</div>';
+                allConnectionsHtml.push(contactSectionHtml);
+            }
+            // --- СТАРЫЙ БЛОК: Обработка связей по ИНН ---
+            else if (connectionGroup.type === 'inn' && connectionGroup.subtype === 'inn_match' && Array.isArray(connectionGroup.connections)) {
+                // ... (ваш старый код для ИНН, без изменений) ...
+                const innValue = connectionGroup.contact;
                 const connectionsList = connectionGroup.connections;
 
                 let innSectionHtml = `
@@ -164,22 +307,20 @@ function createCardHtml(item, tabName) {
                     <div class="connections-details-container">
                 `;
 
-                // Перебираем каждую связь отдельно
                 connectionsList.forEach(conn => {
                     const connectedEntity = conn.connectedEntity;
                     const connectedName = connectedEntity.NameShort || connectedEntity.NameFull || connectedEntity.INN || 'N/A';
                     const connectedType = connectedEntity.type || 'unknown';
                     const connectionStatus = conn.connectionStatus;
                     const sourceTable = connectedEntity.sourceTable;
-                    const baseName = connectedEntity.baseName; // Имя БД источника
-                    const source = connectedEntity.source; // Источник: local или delta
+                    const baseName = connectedEntity.baseName;
+                    const source = connectedEntity.source;
 
                     let connectedIcon = 'fas fa-question-circle';
                     if (connectedType === 'juridical') connectedIcon = 'fas fa-building';
                     else if (connectedType === 'ip') connectedIcon = 'fas fa-store';
                     else if (connectedType === 'physical') connectedIcon = 'fas fa-user';
 
-                    // Определяем человекочитаемое описание статуса
                     let statusDescription = 'Статус неизвестен';
                     switch (connectionStatus) {
                         case 'organization_match':
@@ -194,11 +335,23 @@ function createCardHtml(item, tabName) {
                         case 'contact_person':
                             statusDescription = 'Контактное лицо';
                             break;
+                        case 'former_employee_of':
+                            statusDescription = 'Работал в';
+                            break;
+                        case 'current_employee_of':
+                            statusDescription = 'Работает в';
+                            break;
+                        case 'former_workplace_of':
+                            statusDescription = 'Бывшее место работы';
+                            break;
+                        case 'person_match':
+                            statusDescription = 'Найден как физическое лицо';
+                            break;
+                        // ... другие статусы ...
                         default:
-                            statusDescription = connectionStatus; // Используем как есть, если не распознали
+                            statusDescription = connectionStatus;
                     }
 
-                    // Определяем человекочитаемое описание источника и БД
                     let sourceDescription = 'Источник неизвестен';
                     let baseNameDescription = '';
                     if (source === 'local') {
@@ -206,8 +359,8 @@ function createCardHtml(item, tabName) {
                             case 'contragent':
                                 sourceDescription = 'Контрагент';
                                 break;
-                            case 'prevwork':
-                                sourceDescription = 'Предыдущее место работы';
+                            case 'prevwork': // Старый тип (входящие сущности prevwork)
+                                sourceDescription = 'Предыдущее место работы (входящее)';
                                 break;
                             case 'employee':
                                 sourceDescription = 'Сотрудник';
@@ -215,24 +368,36 @@ function createCardHtml(item, tabName) {
                             case 'contperson':
                                 sourceDescription = 'Таблица контактных лиц';
                                 break;
+                            case 'person_direct_inn_match':
+                                sourceDescription = 'Персоны (по ИНН)';
+                                break;
+                            case 'prevwork_by_org_inn':
+                                sourceDescription = 'Персоны (через пред. работу)';
+                                break;
+                            case 'employee_by_person_inn':
+                                sourceDescription = 'Сотрудники (по ИНН физлица)';
+                                break;
+                            case 'person_by_inn_via_prevwork':
+                                sourceDescription = 'Персоны (через пред. работу, по ИНН)';
+                                break;
+                            case 'prevwork_person_from_persons':
+                                sourceDescription = 'Предыдущее место работы';
+                                break;
+                            // ... другие таблицы ...
                             default:
-                                sourceDescription = sourceTable; // Используем как есть, если не распознали
+                                sourceDescription = sourceTable;
                         }
                         baseNameDescription = baseName ? ` (БД: ${baseName})` : ' (БД: не указана)';
                     } else if (source === 'delta') {
                         sourceDescription = 'Delta Безопасность';
-                        baseNameDescription = ''; // Delta не имеет BaseName
+                        baseNameDescription = '';
                     }
 
-                    const connectionDetails = conn.connectionDetails; // Основная строка
-                    const employeeInfo = conn.employeeInfo; // Структурированные данные сотрудника
+                    const employeeInfo = conn.employeeInfo;
 
-                    // ... (определение иконки, статуса, источника) ...
-
-                    // --- НАЧАЛО: Формирование HTML для деталей сотрудника ---
                     let employeeDetailsHtml = '';
-                    if (employeeInfo) { // Проверяем, есть ли объект employeeInfo
-                        employeeDetailsHtml = '<div class="employee-details">'; // Контейнер для деталей сотрудника
+                    if (employeeInfo) {
+                        employeeDetailsHtml = '<div class="employee-details">';
                         if (employeeInfo.phFunction) {
                             employeeDetailsHtml += `<div class="emp-position">Должность: ${employeeInfo.phFunction}</div>`;
                         }
@@ -242,30 +407,26 @@ function createCardHtml(item, tabName) {
                         if (employeeInfo.phDate) {
                             employeeDetailsHtml += `<div class="emp-date">Дата: ${employeeInfo.phDate}</div>`;
                         }
-                        // Добавьте другие поля, если нужно
                         employeeDetailsHtml += '</div>';
                     }
-                    // --- КОНЕЦ: Формирование HTML для деталей сотрудника ---
 
-                    // Формируем основной HTML для связи
                     innSectionHtml += `
                         <div class="connection-detail">
                             <i class="${connectedIcon}"></i>
                             <div class="connection-info">
                                 <div class="connected-name">${connectedName}</div>
-                                <div class="connection-meta">(${statusDescription}, ${sourceDescription}${baseNameDescription})</div>
-                                <!-- Вставляем детали сотрудника, если они есть -->
+                                <div class="connection-meta">${statusDescription}, ${sourceDescription}${baseNameDescription}</div>
                                 ${employeeDetailsHtml}
                             </div>
                         </div>
                     `;
-                    connectionCount++; // Увеличиваем счетчик на 1 за каждую связь
+                    connectionCount++;
                 });
 
                 innSectionHtml += '</div>';
                 allConnectionsHtml.push(innSectionHtml);
             }
-            // else if ... (другие типы связей)
+            // else if ... (другие типы связей, если появятся)
         });
 
         if (allConnectionsHtml.length > 0) {

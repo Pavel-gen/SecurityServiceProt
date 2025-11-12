@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 // URL вашего сервера
 const API_URL = 'http://localhost:3000/api/search';
 
@@ -12,6 +13,7 @@ let appState = {
 };
 
 // Функция переключения секций (раскрывающиеся блоки)
+// eslint-disable-next-line no-unused-vars
 function toggleSection(element) {
     const content = element.parentElement.querySelector('.toggle-content');
     const icon = element.querySelector('.fa-chevron-down');
@@ -133,7 +135,7 @@ function displayResults(tabName) {
 // ... (ваш существующий код script.js до функции createCardHtml) ...
 
 // Функция создания HTML-кода для карточки (адаптированная для отображения только непустых полей)
-function createCardHtml(item, tabName) {
+function createCardHtml(item) {
     // Определяем тип и соответствующие иконки/статусы
     let icon = 'fas fa-question-circle';
     let status = '';
@@ -330,8 +332,9 @@ function createCardHtml(item, tabName) {
                         baseNameDescription = ''; // Delta не имеет BaseName
                     }
 
-const connectionDetails = conn.connectionDetails; // Основная строка
-const employeeInfo = conn.employeeInfo; // Структурированные данные сотрудника
+// eslint-disable-next-line no-unused-vars
+                    const connectionDetails = conn.connectionDetails; // Основная строка
+                    const employeeInfo = conn.employeeInfo; // Структурированные данные сотрудника
 
 // ... (определение иконки, статуса, источника) ...
 
