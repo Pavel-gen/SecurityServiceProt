@@ -56,17 +56,17 @@ async function findConnections(entities) {
         }
 
         // Добавляем связи по телефону
-        // if (entityKey && phoneConnectionsMap.has(entityKey)) {
-        //     const phoneConnections = phoneConnectionsMap.get(entityKey) || {};
-        //     for (const [phoneGroupKey, connections] of Object.entries(phoneConnections)) {
-        //         entityConnections.push({
-        //             contact: phoneGroupKey,
-        //             type: 'contact',
-        //             subtype: 'phone',
-        //             connections: connections
-        //         });
-        //     }
-        // }
+        if (entityKey && phoneConnectionsMap.has(entityKey)) {
+            const phoneConnections = phoneConnectionsMap.get(entityKey) || {};
+            for (const [phoneGroupKey, connections] of Object.entries(phoneConnections)) {
+                entityConnections.push({
+                    contact: phoneGroupKey,
+                    type: 'contact',
+                    subtype: 'phone',
+                    connections: connections
+                });
+            }
+        }
 
         // Добавляем связи по ИНН
         if (entityKey && innConnectionsMap.has(entityKey)) {

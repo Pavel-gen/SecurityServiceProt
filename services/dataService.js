@@ -3,6 +3,8 @@ import 'dotenv/config';
 import { config } from '../config/dbConfig.js';
 // --- ИМПОРТИРУЕМ cleanPhone ---
 import { cleanPhone } from '../utils/helper.js'; // Путь к utils.helper.js может отличаться
+import { normalizePhoneSQL } from "../utils/helper.js";
+
 // ---
 
 // Приводит поля INN, UNID, fzUID, cpUID, PersonUNID к единому формату
@@ -123,7 +125,7 @@ async function fetchLocalData(query) {
     // ---
 
 
-    // --- ОБНОВЛЕННЫЕ ЗАПРОСЫ С УЧЕТОМ ТЕЛЕФОНА, EMAIL, АДРЕСОВ, OGRN И ПЕРЕСТРАХОВКИ 'LIKE QUERY' ---
+    // --- ОБНОВЛЕННЫЕ ЗАПРОСЫ С УЧЕТОМ НОРМАЛИЗАЦИИ ТЕЛЕФОНОВ ---
     // Запрос 1: Поиск в CI_Contragent_test
     const contragentQuery = `
         SELECT
@@ -131,11 +133,11 @@ async function fetchLocalData(query) {
             BaseName -- Добавляем BaseName
         FROM CI_Contragent_test
         WHERE
-            -- Основной поиск по тексту, включая телефоны и email (перестраховка)
-            (@query IS NOT NULL AND (INN LIKE @query OR NameShort LIKE @query OR NameFull LIKE @query OR UNID LIKE @query OR OGRN LIKE @query OR AddressUr LIKE @query OR AddressUFakt LIKE @query OR PhoneNum LIKE @query OR eMail LIKE @query))
+            -- Основной поиск по тексту, включая email (перестраховка)
+            (@query IS NOT NULL AND (INN LIKE @query OR NameShort LIKE @query OR NameFull LIKE @query OR UNID LIKE @query OR OGRN LIKE @query OR AddressUr LIKE @query OR AddressUFakt LIKE @query OR eMail LIKE @query))
             OR
-            -- Поиск по нормализованному телефону (если query был телефоном)
-            (@phoneQuery IS NOT NULL AND PhoneNum LIKE @phoneQuery) -- PhoneNum может быть не нормализована, но ищем вхождение нормализованного
+            -- Поиск по нормализованному телефону (если query был телефоном) - ИСПОЛЬЗУЕМ normalizePhoneSQL
+            (@phoneQuery IS NOT NULL AND ${normalizePhoneSQL('PhoneNum')} = @phoneQuery) -- Точное совпадение нормализованных номеров
             OR
             -- Поиск по email (если query был email)
             (@emailQuery IS NOT NULL AND eMail LIKE @emailQuery)
@@ -153,11 +155,11 @@ async function fetchLocalData(query) {
             BaseName -- Добавляем BaseName
         FROM CI_Employees_test
         WHERE
-            -- Основной поиск по тексту, включая телефоны и email (перестраховка)
-            (@query IS NOT NULL AND (fzFIO LIKE @query OR fzUID LIKE @query OR phOrgINN LIKE @query OR fzAddress LIKE @query OR fzAddressF LIKE @query OR fzPhone LIKE @query OR fzMail LIKE @query OR fzPhoneM LIKE @query))
+            -- Основной поиск по тексту, включая email (перестраховка)
+            (@query IS NOT NULL AND (fzFIO LIKE @query OR fzUID LIKE @query OR phOrgINN LIKE @query OR fzAddress LIKE @query OR fzAddressF LIKE @query OR fzMail LIKE @query))
             OR
-            -- Поиск по нормализованному телефону (если query был телефоном)
-            (@phoneQuery IS NOT NULL AND (fzPhone LIKE @phoneQuery OR fzPhoneM LIKE @phoneQuery))
+            -- Поиск по нормализованному телефону (если query был телефоном) - ИСПОЛЬЗУЕМ normalizePhoneSQL
+            (@phoneQuery IS NOT NULL AND (${normalizePhoneSQL('fzPhone')} = @phoneQuery OR ${normalizePhoneSQL('fzPhoneM')} = @phoneQuery))
             OR
             -- Поиск по email (если query был email)
             (@emailQuery IS NOT NULL AND fzMail LIKE @emailQuery)
@@ -171,11 +173,11 @@ async function fetchLocalData(query) {
             BaseName -- Добавляем BaseName
         FROM CI_ContPersons_test
         WHERE
-            -- Основной поиск по тексту, включая телефоны и email (перестраховка)
-            (@query IS NOT NULL AND (cpNameFull LIKE @query OR cpUID LIKE @query OR conINN LIKE @query OR cpAddress LIKE @query OR cpTown LIKE @query OR cpPhoneMob LIKE @query OR cpPhoneMobS LIKE @query OR cpPhoneWork LIKE @query OR cpMail LIKE @query))
+            -- Основной поиск по тексту, включая email (перестраховка)
+            (@query IS NOT NULL AND (cpNameFull LIKE @query OR cpUID LIKE @query OR conINN LIKE @query OR cpAddress LIKE @query OR cpTown LIKE @query OR cpMail LIKE @query))
             OR
-            -- Поиск по нормализованному телефону (если query был телефоном)
-            (@phoneQuery IS NOT NULL AND (cpPhoneMob LIKE @phoneQuery OR cpPhoneMobS LIKE @phoneQuery OR cpPhoneWork LIKE @phoneQuery))
+            -- Поиск по нормализованному телефону (если query был телефоном) - ИСПОЛЬЗУЕМ normalizePhoneSQL
+            (@phoneQuery IS NOT NULL AND (${normalizePhoneSQL('cpPhoneMob')} = @phoneQuery OR ${normalizePhoneSQL('cpPhoneMobS')} = @phoneQuery OR ${normalizePhoneSQL('cpPhoneWork')} = @phoneQuery))
             OR
             -- Поиск по email (если query был email)
             (@emailQuery IS NOT NULL AND cpMail LIKE @emailQuery)
@@ -187,11 +189,11 @@ async function fetchLocalData(query) {
             PersonUNID, INN, OGRN, Caption, Phone, EMail, WorkPeriod
         FROM CF_PrevWork_test
         WHERE
-            -- Основной поиск по тексту, включая телефоны и email (перестраховка)
-            (@query IS NOT NULL AND (Caption LIKE @query OR PersonUNID LIKE @query OR INN LIKE @query OR Phone LIKE @query OR EMail LIKE @query))
+            -- Основной поиск по тексту, включая email (перестраховка)
+            (@query IS NOT NULL AND (Caption LIKE @query OR PersonUNID LIKE @query OR INN LIKE @query OR EMail LIKE @query))
             OR
-            -- Поиск по нормализованному телефону (если query был телефоном)
-            (@phoneQuery IS NOT NULL AND Phone LIKE @phoneQuery)
+            -- Поиск по нормализованному телефону (если query был телефоном) - ИСПОЛЬЗУЕМ normalizePhoneSQL
+            (@phoneQuery IS NOT NULL AND ${normalizePhoneSQL('Phone')} = @phoneQuery)
             OR
             -- Поиск по email (если query был email)
             (@emailQuery IS NOT NULL AND EMail LIKE @emailQuery)
@@ -222,7 +224,8 @@ async function fetchLocalData(query) {
             (@query IS NOT NULL AND (PersonUNID LIKE @query OR Contact LIKE @query))
             OR
             -- Поиск по нормализованному телефону/email в Contact (если query был телефоном/email)
-            (@phoneQuery IS NOT NULL AND Contact LIKE @phoneQuery) -- Предполагаем, что контакт может быть телефоном
+            -- ИСПОЛЬЗУЕМ normalizePhoneSQL для Contact, предполагая, что ContactType уже проверен где-то в другом месте
+            (@phoneQuery IS NOT NULL AND ${normalizePhoneSQL('Contact')} = @phoneQuery) -- Точное совпадение нормализованных номеров
             OR
             (@emailQuery IS NOT NULL AND Contact LIKE @emailQuery) -- Предполагаем, что контакт может быть email
     `;
@@ -305,33 +308,46 @@ async function fetchLocalData(query) {
         // ---
     }));
 
-    const contPersons = contPersonResult.recordset.map(row => normalizeEntity({
-        cpUID: row.cpUID,
-        conUID: row.conUID,
-        conCode: row.conCode,
-        conINN: row.conINN,
-        cpNameFull: row.cpNameFull,
-        cpName1: row.cpName1,
-        cpName2: row.cpName2,
-        cpName3: row.cpName3,
-        cpDateB: row.cpDateB,
-        cpFunction: row.cpFunction,
-        cpVid: row.cpVid,
-        cpPhoneMob: row.cpPhoneMob,
-        cpPhoneMobS: row.cpPhoneMobS,
-        cpPhoneWork: row.cpPhoneWork,
-        cpMail: row.cpMail,
-        cpAddress: row.cpAddress,
-        cpCountry: row.cpCountry,
-        cpReg: row.cpReg,
-        cpTown: row.cpTown,
-        type: 'physical',
-        // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
-        source: 'local',
-        sourceTable: 'CI_ContPersons_test',
-        baseName: row.BaseName
-        // ---
-    }));
+ const contPersons = contPersonResult.recordset.map(row => {
+        // Собираем ФИО из отдельных полей cpName1, cpName2, cpName3
+        const firstName = row.cpName2 || ''; // cpName2 - Имя
+        const lastName = row.cpName1 || '';  // cpName1 - Фамилия
+        const middleName = row.cpName3 || ''; // cpName3 - Отчество
+        const fullName = `${lastName} ${firstName} ${middleName}`.trim();
+
+        // Создаем сущность, добавляя NameShort и NameFull
+        return normalizeEntity({
+            cpUID: row.cpUID,
+            conUID: row.conUID,
+            conCode: row.conCode,
+            conINN: row.conINN,
+            cpNameFull: row.cpNameFull,
+            cpName1: row.cpName1,
+            cpName2: row.cpName2,
+            cpName3: row.cpName3,
+            cpDateB: row.cpDateB,
+            cpFunction: row.cpFunction,
+            cpVid: row.cpVid,
+            cpPhoneMob: row.cpPhoneMob,
+            cpPhoneMobS: row.cpPhoneMobS,
+            cpPhoneWork: row.cpPhoneWork,
+            cpMail: row.cpMail,
+            cpAddress: row.cpAddress,
+            cpCountry: row.cpCountry,
+            cpReg: row.cpReg,
+            cpTown: row.cpTown,
+            // --- ДОБАВЛЯЕМ NameShort и NameFull ---
+            NameShort: fullName || row.cpNameFull, // Если ФИО не удалось собрать, используем cpNameFull как fallback
+            NameFull: fullName || row.cpNameFull, // Аналогично для NameFull
+            // ---
+            type: 'physical',
+            // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
+            source: 'local',
+            sourceTable: 'CI_ContPersons_test',
+            baseName: row.BaseName
+            // ---
+        });
+    });
 
     const prevWorks = prevWorkResult.recordset.map(row => normalizeEntity({
         PersonUNID: row.PersonUNID,
@@ -410,6 +426,8 @@ async function fetchLocalData(query) {
 
     console.log(`Найдено ${allTargetEntitiesForConnections.length} локальных сущностей с ключом и INN для поиска связей.`);
     console.log(`Найдено ${allLocalResults.length} локальных сущностей по параметрам (ИНН, ФИО, UNID, Caption, Телефон, Email, Адрес, OGRN).`);
+
+    console.log(allLocalResults);
 
     return {
         localResults: allLocalResults,

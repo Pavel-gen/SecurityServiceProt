@@ -1,0 +1,54 @@
+@startuml
+!theme plain
+
+package "База Данных" {
+  entity "CF_Contacts" as Contacts {
+    PersonUNID: varchar
+    Contact: varchar
+  }
+
+  entity "CF_Persons" as Persons {
+    UNID: varchar
+    INN: varchar
+  }
+
+  entity "CI_Employees" as Employees {
+    fzUID: varchar
+    fzPhone: varchar
+    fzPhoneM: varchar
+  }
+
+  entity "CI_ContPersons" as ContPersons {
+    cpUID: varchar
+    cpPhoneMob: varchar
+    cpPhoneMobS: varchar
+    cpPhoneWork: varchar
+  }
+
+  entity "CI_Contragent" as Contragent {
+    UNID: varchar
+    PhoneNum: varchar
+  }
+
+  entity "CF_PrevWork" as PrevWork {
+    PersonUNID: varchar
+    Phone: varchar
+  }
+}
+
+' Связи по телефону (через CF_Contacts как промежуточную таблицу)
+Contacts ||--o{ Persons : "PersonUNID -> UNID (по телефону)"
+Contacts ||--o{ Employees : "PersonUNID -> fzUID (по телефону)"
+Contacts ||--o{ ContPersons : "PersonUNID -> cpUID (по телефону)"
+Contacts ||--o{ PrevWork : "PersonUNID -> PersonUNID (по телефону)"
+
+' Связи по телефону (прямой поиск)
+Contragent ||--o{ "Результаты поиска" : "PhoneNum (прямой)"
+Employees ||--o{ "Результаты поиска" : "fzPhone/fzPhoneM (прямой)"
+ContPersons ||--o{ "Результаты поиска" : "cpPhoneMob/Work (прямой)"
+PrevWork ||--o{ "Результаты поиска" : "Phone (прямой, -> Persons)"
+
+note top of Contacts : "ContactType может указывать,\n что Contact - это телефон"
+note bottom of PrevWork : "Phone в PrevWork ->\n поиск PersonUNID ->\n связь с Persons"
+
+@enduml

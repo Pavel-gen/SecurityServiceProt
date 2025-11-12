@@ -7,7 +7,11 @@ function determineEntityType(UrFiz, fIP) {
 
 function cleanPhone(phone) {
     // Убираем все нецифровые символы, кроме +
-    return phone.replace(/[^\d+]/g, '');
+    return phone.replace(/[^\d]/g, '');
+}
+
+function normalizePhoneSQL(columnName) {
+    return `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${columnName}, '+', ''), '(', ''), ')', ''), '-', ''), ' ', '')`;
 }
 
 function getEntityKey(entity) {
@@ -41,4 +45,4 @@ function getEntityKey(entity) {
     return null;
 }
 
-export {determineEntityType, cleanPhone, getEntityKey};
+export {determineEntityType, cleanPhone, getEntityKey, normalizePhoneSQL};

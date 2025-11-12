@@ -1,0 +1,40 @@
+Тест-кейсы для поиска по Телефону:
+
+Цель: Проверить, что поиск по телефону находит все возможные связи, как прямые, так и косвенные, через промежуточную таблицу CF_Contacts и напрямую по номеру в других таблицах.
+
+Вход: Нормализованный телефонный номер (например, 79991234567).
+
+Кейс 1: Прямой поиск - Найти контрагентов по PhoneNum
+- Условие: Ввести нормализованный телефон, который есть в столбце PhoneNum таблицы CI_Contragent_test.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'phone', contact: 'введённый_телефон'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'juridical'/'ip', sourceTable: 'contragent', NameShort: 'название_контрагента'.
+
+Кейс 2: Прямой поиск - Найти работников по fzPhone или fzPhoneM
+- Условие: Ввести нормализованный телефон, который есть в столбце fzPhone или fzPhoneM таблицы CI_Employees_test.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'phone', contact: 'введённый_телефон'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'employee', NameShort: 'fzFIO_работника'.
+
+Кейс 3: Прямой поиск - Найти контактные лица по cpPhoneMob, cpPhoneMobS или cpPhoneWork
+- Условие: Ввести нормализованный телефон, который есть в столбце cpPhoneMob, cpPhoneMobS или cpPhoneWork таблицы CI_ContPersons_test.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'phone', contact: 'введённый_телефон'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'contperson', NameShort: 'cpNameFull_контактного_лица'.
+
+Кейс 4: Косвенный поиск - CF_Contacts.Contact (телефон) -> CI_ContPersons
+- Условие: Ввести нормализованный телефон, который есть в столбце Contact таблицы CF_Contacts_test (с ContactType, содержащим 'phone' или просто проверка формата). PersonUNID из этой записи должен существовать в CI_ContPersons_test.cpUID.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'phone', contact: 'введённый_телефон'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'contperson_via_contact', NameShort: 'cpNameFull_из_CI_ContPersons'.
+
+Кейс 5: Косвенный поиск - CF_Contacts.Contact (телефон) -> CI_Employees
+- Условие: Ввести нормализованный телефон, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CI_Employees_test.fzUID.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'phone', contact: 'введённый_телефон'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'employee_via_contact', NameShort: 'fzFIO_из_CI_Employees'.
+
+Кейс 6: Косвенный поиск - CF_Contacts.Contact (телефон) -> CF_Persons
+- Условие: Ввести нормализованный телефон, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CF_Persons_test.UNID.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'phone', contact: 'введённый_телефон'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'person_via_contact', NameShort: 'ФИО_из_CF_Persons'.
+
+Кейс 7: Косвенный поиск - CF_PrevWork.Phone -> CF_Persons
+- Условие: Ввести нормализованный телефон, который есть в столбце Phone таблицы CF_PrevWork_test. PersonUNID из этой записи должен существовать в CF_Persons_test.UNID.
+- Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'phone', contact: 'введённый_телефон'.
+  Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'person_from_prevwork_phone', NameShort: 'ФИО_из_CF_Persons', prevWorkCaption: 'Caption_из_CF_PrevWork'. (Требует обновления SQL и логики отображения)
