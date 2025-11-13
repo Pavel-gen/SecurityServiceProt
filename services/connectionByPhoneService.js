@@ -55,7 +55,7 @@ async function findConnectionsByPhone(targetEntities) {
             // console.log("Выполняем SQL запрос...", fullPhoneQuery);
             const phoneResult = await phoneRequest.query(fullPhoneQuery); // <<< ОШИБКА ЗДЕСЬ >>>
             console.log("Количество результатов поиска по телефону:", phoneResult.recordset.length); // <<< ЭТОТ ЛОГ НЕ ПОЯВИТСЯ >>>
-            console.log("Найденные сущности по телефону: ", phoneResult);
+            // console.log("Найденные сущности по телефону: ", phoneResult);
 
             // --- СОПОСТАВЛЕНИЕ НАЙДЕННЫХ СУЩНОСТЕЙ С ЦЕЛЕВЫМИ ---
             phoneResult.recordset.forEach(row => {

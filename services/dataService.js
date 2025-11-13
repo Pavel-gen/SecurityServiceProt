@@ -156,7 +156,7 @@ async function fetchLocalData(query) {
         FROM CI_Employees_test
         WHERE
             -- Основной поиск по тексту, включая email (перестраховка)
-            (@query IS NOT NULL AND (fzFIO LIKE @query OR fzUID LIKE @query OR phOrgINN LIKE @query OR fzAddress LIKE @query OR fzAddressF LIKE @query OR fzMail LIKE @query))
+            (@query IS NOT NULL AND (fzFIO LIKE @query OR fzINN LIKE @query OR fzUID LIKE @query OR phOrgINN LIKE @query OR fzAddress LIKE @query OR fzAddressF LIKE @query OR fzMail LIKE @query))
             OR
             -- Поиск по нормализованному телефону (если query был телефоном) - ИСПОЛЬЗУЕМ normalizePhoneSQL
             (@phoneQuery IS NOT NULL AND (${normalizePhoneSQL('fzPhone')} = @phoneQuery OR ${normalizePhoneSQL('fzPhoneM')} = @phoneQuery))
@@ -304,7 +304,8 @@ async function fetchLocalData(query) {
         // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
         source: 'local',
         sourceTable: 'CI_Employees_test',
-        baseName: row.BaseName
+        baseName: row.BaseName,
+        NameShort: row.fzFIO,
         // ---
     }));
 

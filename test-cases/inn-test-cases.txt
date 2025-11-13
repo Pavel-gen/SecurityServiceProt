@@ -4,37 +4,44 @@
 
 Вход: ИНН (например, 1234567890123).
 
-Кейс 1: Прямой поиск - Найти контрагентов по INN
+Кейс 1: Прямой поиск - Найти контрагентов по INN 
 - Условие: Ввести ИНН, который есть в столбце INN таблицы CI_Contragent_test.
 - Ожидаемый результат: В connections появляется группа с type: 'inn', subtype: 'inn_match', contact: 'введённый_ИНН'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'juridical'/'ip', sourceTable: 'contragent', NameShort: 'название_контрагента'.
 
++
 Кейс 2: Прямой поиск - Найти работников по phOrgINN
 - Условие: Ввести ИНН, который есть в столбце phOrgINN таблицы CI_Employees_test.
 - Ожидаемый результат: В connections появляется группа с type: 'inn', subtype: 'inn_match', contact: 'введённый_ИНН'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'employee', NameShort: 'fzFIO_работника', connectionStatus: 'current_employee'/'former_employee'.
++
 
 Кейс 3: Прямой поиск - Найти контактные лица по conINN
 - Условие: Ввести ИНН, который есть в столбце conINN таблицы CI_ContPersons_test.
 - Ожидаемый результат: В connections появляется группа с type: 'inn', subtype: 'inn_match', contact: 'введённый_ИНН'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'contperson', NameShort: 'cpNameFull_контактного_лица'.
++
 
 Кейс 4: Прямой поиск - Найти организации по fzINN (физлицо/ИП -> организации)
 - Условие: Ввести ИНН физлица/ИП, который есть в столбце fzINN таблицы CI_Employees_test.
 - Ожидаемый результат: В connections появляется группа с type: 'inn', subtype: 'inn_match', contact: 'введённый_ИНН'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'legal', sourceTable: 'employee_by_person_inn', NameShort: 'название_организации', connectionStatus: 'current_employee_of'/'former_employee_of'.
++
 
 Кейс 5: Прямой поиск - Найти организации из prevwork по INN физлица (физлицо/ИП -> prevwork -> организации)
 - Условие: Ввести ИНН физлица/ИП, который есть в столбце INN таблицы CF_Persons_test. У этого физлица должны быть записи в CF_PrevWork_test.
 - Ожидаемый результат: В connections появляется группа с type: 'inn', subtype: 'inn_match', contact: 'введённый_ИНН'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'legal', sourceTable: 'person_by_inn_via_prevwork', NameShort: 'Caption_из_CF_PrevWork', connectionStatus: 'former_workplace_of'.
++
 
 Кейс 6: Прямой поиск - Найти самого физлица по INN (физлицо/ИП -> физлицо)
 - Условие: Ввести ИНН физлица/ИП, который есть в столбце INN таблицы CF_Persons_test (без JOIN на prevwork).
 - Ожидаемый результат: В connections появляется группа с type: 'inn', subtype: 'inn_match', contact: 'введённый_ИНН'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'person_direct_inn_match', NameShort: 'ФИО_из_CF_Persons', connectionStatus: 'person_match'.
++
 
 Кейс 7: Косвенный поиск - Найти людей, работавших в организации (организация -> prevwork -> люди)
 - Условие: Ввести ИНН организации, который есть в столбце INN таблицы CF_PrevWork_test.
 - Ожидаемый результат: В connections появляется группа с type: 'inn', subtype: 'inn_match', contact: 'введённый_ИНН'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'prevwork_by_org_inn', NameShort: 'ФИО_человека_из_findPersonDetailsByUNID', connectionStatus: 'former_employee'.
+  +
