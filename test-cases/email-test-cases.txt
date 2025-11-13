@@ -8,16 +8,23 @@
 - Условие: Ввести email, который есть в столбце eMail таблицы CI_Contragent_test.
 - Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'juridical'/'ip', sourceTable: 'contragent', NameShort: 'название_контрагента'.
++
 
 Кейс 2: Прямой поиск - Найти контактные лица по cpMail
 - Условие: Ввести email, который есть в столбце cpMail таблицы CI_ContPersons_test.
 - Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'contperson', NameShort: 'ФИО_контактного_лица'.
++
 
 Кейс 3: Прямой поиск - Найти работников по fzMail
 - Условие: Ввести email, который есть в столбце fzMail таблицы CI_Employees_test.
 - Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'employee', NameShort: 'ФИО_работника'.
++
+
+есть edge_case которой не работает :
+baker@mail.ru;info@maskota.ru;79219564848@yandex.ru -> находит соврадения по кажжой из почт
+но 79219564848@yandex.ru не находит совпадений по baker@mail.ru;info@maskota.ru;79219564848@yandex.ru только по 79219564848@yandex.r (пофиксить потом)
 
 Кейс 4: Прямой поиск - Найти запись в CF_Contacts по Contact (если это email)
 - Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test (с ContactType, содержащим 'email' или просто '@').

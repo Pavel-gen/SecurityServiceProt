@@ -40,79 +40,61 @@ function normalizePhoneSQL(columnName) {
 
 function getEntityKey(entity) {
     if (!entity) {
+        // console.log('getEntityKey: entity is null/undefined');
         return null;
     }
 
     // --- ОБРАБОТКА ЛОКАЛЬНЫХ СУЩНОСТЕЙ ---
     if (entity.source === 'local' && entity.sourceTable) {
-        // Приоритетный локальный ключ (в зависимости от таблицы)
         let localId = null;
         let idType = '';
 
-        // Определяем ID и его тип в зависимости от таблицы
+        // console.log('getEntityKey для:', {
+        //     sourceTable: entity.sourceTable,
+        //     UNID: entity.UNID,
+        //     fzUID: entity.fzUID, 
+        //     cpUID: entity.cpUID,
+        //     PersonUNID: entity.PersonUNID,
+        //     contactUNID: entity.contactUNID
+        // });
+
         switch (entity.sourceTable) {
-            case 'CF_Contacts_test':
-                localId = entity.PersonUNID;
-                idType = 'PersonUNID';
-                break;
-            case 'CF_Persons_test':
-                localId = entity.UNID;
+            case 'CI_Contragent_test':
+                localId = entity.UNID || entity.contactUNID;
                 idType = 'UNID';
-                break;
-            case 'CF_PrevWork_test':
-                // Для PrevWork может быть логичнее использовать комбинацию PersonUNID + INN или другое
-                // Но если нужен уникальный ключ, можно использовать PersonUNID
-                localId = entity.PersonUNID;
-                idType = 'PersonUNID';
                 break;
             case 'CI_ContPersons_test':
-                localId = entity.cpUID;
+                localId = entity.cpUID || entity.contactUNID;
                 idType = 'cpUID';
                 break;
-            case 'CI_Contragent_test':
-                localId = entity.UNID;
-                idType = 'UNID';
-                break;
             case 'CI_Employees_test':
-                localId = entity.fzUID;
+                localId = entity.fzUID || entity.contactUNID;
                 idType = 'fzUID';
                 break;
+            case 'CF_Persons_test':
+                localId = entity.UNID || entity.PersonUNID;
+                idType = 'UNID';
+                break;
+            case 'CF_Contacts_test':
+                localId = entity.PersonUNID || entity.contactUNID;
+                idType = 'PersonUNID';
+                break;
             default:
-                // Резервный вариант: попробовать стандартные поля
-                localId = entity.UNID || entity.fzUID || entity.cpUID || entity.PersonUNID;
-                // Если используем резервный, всё равно нужно указать тип для уникальности
+                localId = entity.UNID || entity.fzUID || entity.cpUID || entity.PersonUNID || entity.contactUNID;
                 idType = 'generic';
         }
 
         if (localId) {
-            // Генерируем составной ключ: sourceTable + '_' + idType + '_' + localId
-            // Это гарантирует уникальность даже при совпадении ID между таблицами
-            return `${entity.sourceTable}_${idType}_${localId}`;
+            const key = `${entity.sourceTable}_${idType}_${localId}`;
+            // console.log('Сгенерирован ключ:', key);
+            return key;
+        } else {
+            console.log('getEntityKey: не найден localId для', entity.sourceTable);
         }
     }
 
-    // --- ОБРАБОТКА СУЩНОСТЕЙ ИЗ DELTA ---
-    if (entity.source === 'delta') {
-        // Для юрлиц/ИП из эндпоинта company
-        if (entity.sourceEndpoint === 'company' && entity.deltaRaw && entity.deltaRaw.company_id) {
-            return `delta_company_${entity.deltaRaw.company_id}`;
-        }
-        // Для ФЛ из эндпоинта person
-        if (entity.sourceEndpoint === 'person' && entity.deltaRaw && entity.deltaRaw.person_id) {
-            return `delta_person_${entity.deltaRaw.person_id}`;
-        }
-        // Для ИП из эндпоинта ip (предполагаем, что там тоже может быть id)
-        if (entity.sourceEndpoint === 'ip' && entity.deltaRaw && entity.deltaRaw.id) {
-            return `delta_ip_${entity.deltaRaw.id}`;
-        }
-        // Резервный вариант: использовать ИНН как ключ (менее надёжно, если ИНН не уникальны в контексте Delta)
-        if (entity.INN) {
-            return `delta_inn_${entity.INN}`;
-        }
-    }
-
-    // Если не найден ни один ключ, возвращаем null
-    return null;
+    // console.log('getEntityKey: fallback для', entity);
+    return entity.PersonUNID || entity.UNID || entity.fzUID || entity.cpUID || entity.INN;
 }
 
 

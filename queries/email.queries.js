@@ -51,17 +51,17 @@ function buildEmailQuery(emailArray) {
     // Кейс 3: CI_Employees.fzMail
     const directEmployeeQuery = `
         SELECT
-            NULL as contactUNID,
+            ce.fzUID as contactUNID,
             ce.fzINN as contactINN,
             ce.fzFIO as contactNameShort,
             ce.fzFIO as contactNameFull,
             ce.fzMail as contactEmail,
             2 as UrFiz,
             0 as fIP,
-            ce.fzUID as fzUID,
+            ce.fzUID as fzUID,  -- ДОЛЖНО БЫТЬ fzUID, а не contactUNID
             NULL as cpUID,
-            NULL as PersonUNID,
-            'employee' as sourceTable,
+            ce.fzUID as fzUID,
+            'CI_Employees_test' as sourceTable,
             ce.fzUID as entityKey,
             ce.BaseName as baseName,
             NULL as relatedPersonUNID,

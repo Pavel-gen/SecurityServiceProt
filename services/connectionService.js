@@ -5,29 +5,38 @@ import { findConnectionsByINN } from "./connectionByINNService.js";
 import { findConnectionsByPhone } from "./connectionByPhoneService.js";
 import { getEntityKey } from '../utils/helper.js';
 
-// --- КОНФИГУРАЦИЯ ТИПОВ ПОИСКА ---
 const SEARCH_CONFIGS = [
-{
-    name: 'inn',
-    filter: entity => {
-        const entityKey = getEntityKey(entity);
-        if (!entityKey) return false;
-        
-        // Проверяем наличие ЛЮБОГО ИНН
-        const hasAnyINN = (entity.INN && entity.INN.trim() !== '') ||
-                         (entity.phOrgINN && entity.phOrgINN.trim() !== '') ||
-                         (entity.fzINN && entity.fzINN.trim() !== '') ||
-                         (entity.conINN && entity.conINN.trim() !== '');
-        
-        return hasAnyINN;
-    },
-    findFunction: findConnectionsByINN,
-    type: 'inn',
-    subtype: 'inn_match'
-}
+        {
+            name: 'email',
+            filter: entity => {
+                const entityKey = getEntityKey(entity);
+                if (!entityKey) return false;
+                
+                // Проверяем ВСЕ возможные поля с email
+                const hasEmail = (entity.eMail && entity.eMail.trim() !== '') ||
+                                (entity.cpMail && entity.cpMail.trim() !== '') ||
+                                (entity.fzMail && entity.fzMail.trim() !== '') ||
+                                (entity.Contact && entity.Contact.includes('@')); // для CF_Contacts
+                
+                return hasEmail;
+            },
+            findFunction: findConnectionsByEmail,
+            type: 'contact',
+            subtype: 'email'
+        }
     // {
     //     name: 'inn',
-    //     filter: entity => getEntityKey(entity) && entity.INN && entity.INN.trim() !== '',
+    //     filter: entity => {
+    //         const entityKey = getEntityKey(entity);
+    //         if (!entityKey) return false;
+            
+    //         const hasAnyINN = (entity.INN && entity.INN.trim() !== '') ||
+    //                          (entity.phOrgINN && entity.phOrgINN.trim() !== '') ||
+    //                          (entity.fzINN && entity.fzINN.trim() !== '') ||
+    //                          (entity.conINN && entity.conINN.trim() !== '');
+            
+    //         return hasAnyINN;
+    //     },
     //     findFunction: findConnectionsByINN,
     //     type: 'inn',
     //     subtype: 'inn_match'
@@ -200,9 +209,13 @@ function normalizeEntityForConnections(entity) {
         'address_ufakt': 'AddressUFakt',
         'ur_fiz': 'UrFiz',
         'f_ip': 'fIP',
-        'fzINN': 'INN',           // для сотрудников
-        'conINN': 'INN',          // для контактных лиц
-        'phOrgINN': 'orgINN'      // ДОБАВЛЯЕМ ЭТУ СТРОКУ
+        'fzINN': 'INN',
+        'conINN': 'INN',
+        'phOrgINN': 'orgINN',
+        // ДОБАВЛЯЕМ ПОЛЯ ДЛЯ EMAIL:
+        'cpMail': 'eMail',           // для контактных лиц
+        'fzMail': 'eMail',           // для сотрудников
+        'Contact': 'contactEmail'    // для контактов (отдельное поле чтобы не перезаписать)
     };
 
     // Применяем маппинг полей
@@ -218,6 +231,7 @@ function normalizeEntityForConnections(entity) {
 
     return entity;
 }
+
 
 export {
     findConnections,

@@ -8,8 +8,8 @@
 - Условие: Ввести ИНН, который есть в столбце INN таблицы CI_Contragent_test.
 - Ожидаемый результат: В connections появляется группа с type: 'inn', subtype: 'inn_match', contact: 'введённый_ИНН'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'juridical'/'ip', sourceTable: 'contragent', NameShort: 'название_контрагента'.
-
 +
+
 Кейс 2: Прямой поиск - Найти работников по phOrgINN
 - Условие: Ввести ИНН, который есть в столбце phOrgINN таблицы CI_Employees_test.
 - Ожидаемый результат: В connections появляется группа с type: 'inn', subtype: 'inn_match', contact: 'введённый_ИНН'.
