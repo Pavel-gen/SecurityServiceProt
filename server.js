@@ -38,6 +38,8 @@ app.post('/api/search', async (req, res) => {
 
         // console.log("RESULTS WITH CONNECTIONS: ", resultsWithConnections);
 
+        // console.log("Вернул findConnections", resultsWithConnections);
+
         // Шаг 5: Сгруппировать объединённые результаты с связями
         const updatedJuridical = resultsWithConnections.filter(item => item.type === 'juridical');
         const updatedIp = resultsWithConnections.filter(item => item.type === 'ip');

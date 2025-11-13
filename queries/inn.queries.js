@@ -1,9 +1,13 @@
-function buildINNQuery(innArray) {
+// inn.queries.js
+import { normalizePhoneSQL } from '../utils/helper.js'; // Если нужна для телефонов в будущем
+
+export function buildINNQuery(innArray) {
     if (innArray.length === 0) return 'SELECT 1 as dummy WHERE 1=0'; // Пустой запрос, если нет ИНН
 
     const innParams = innArray.map((inn, index) => `@inn${index}`);
 
-    // --- Существующие запросы для юр.лиц ---
+    // --- Запросы для поиска по ИНН юридических лиц (и ИП) ---
+    // Запрос 1: Совпадения в CI_Contragent.INN (поиск самого юр.лица/ИП по ИНН)
     const contragentINNQuery = `
         SELECT
             ci.UNID as contactUNID,
@@ -23,18 +27,20 @@ function buildINNQuery(innArray) {
             NULL as PersonFirstName,
             NULL as PersonMiddleName,
             NULL as PersonSNILS,
-            'contragent' as sourceTable,
-            ci.UNID as entityKey,
+            'CI_Contragent_test' as sourceTable, -- <<< Имя таблицы
+            ci.UNID as entityKey, -- <<< Ключ найденной сущности (юр.лица)
             ci.BaseName as baseName,
-            NULL as relatedINN, -- Для юр.лиц связь по ИНН -> юр.лицо, relatedINN не нужно
-            NULL as relatedEntityName -- Имя связанной сущности (для юр.лиц - не применимо в этом контексте)
+            NULL as relatedINN,
+            NULL as relatedEntityName,
+            'contragent_direct_inn_match' as searchContext -- <<< Контекст поиска
         FROM CI_Contragent_test ci
         WHERE ci.INN IN (${innParams.join(', ')})
     `;
 
+    // Запрос 2: Совпадения в CI_Employees.phOrgINN (поиск физ.лиц, работавших в организации)
     const employeeINNQuery = `
         SELECT
-            ce.phOrgINN as contactUNID, -- UNID организации (связанная сущность)
+            ce.phOrgINN as contactUNID, -- ИНН организации (связанная сущность)
             ce.phOrgINN as contactINN, -- ИНН организации
             ce.fzFIO as contactNameShort,
             ce.fzFIO as contactNameFull,
@@ -47,22 +53,24 @@ function buildINNQuery(innArray) {
             ce.phFunction as phFunction,
             ce.phEventType as phEventType,
             ce.phDate as phDate,
-            NULL as PersonLastName, -- Не из CF_Persons
+            NULL as PersonLastName,
             NULL as PersonFirstName,
             NULL as PersonMiddleName,
             NULL as PersonSNILS,
-            'employee' as sourceTable,
-            ce.fzUID as entityKey, -- Ключ сотрудника
+            'CI_Employees_test' as sourceTable, -- <<< Имя таблицы
+            ce.fzUID as entityKey, -- <<< Ключ найденной сущности (физ.лица)
             ce.BaseName as baseName,
-            ce.fzINN as relatedINN, -- ИНН самого сотрудника (физлица) - это target INN
-            ce.fzFIO as relatedEntityName -- Имя физлица
+            ce.fzINN as relatedINN, -- ИНН самого сотрудника (физлица)
+            ce.fzFIO as relatedEntityName,
+            'employee_by_org_inn' as searchContext -- <<< Контекст поиска
         FROM CI_Employees_test ce
         WHERE ce.phOrgINN IN (${innParams.join(', ')}) -- Совпадение по ИНН организации
     `;
 
+    // Запрос 3: Совпадения в CI_ContPersons.conINN (поиск контактных лиц организации)
     const contPersonINNQuery = `
         SELECT
-            cip.conINN as contactUNID, -- UNID организации (связанная сущность)
+            cip.conINN as contactUNID, -- ИНН организации (связанная сущность)
             cip.conINN as contactINN, -- ИНН организации
             cip.cpNameFull as contactNameShort,
             cip.cpNameFull as contactNameFull,
@@ -75,21 +83,22 @@ function buildINNQuery(innArray) {
             NULL as phFunction,
             NULL as phEventType,
             NULL as phDate,
-            NULL as PersonLastName, -- Не из CF_Persons
+            NULL as PersonLastName,
             NULL as PersonFirstName,
             NULL as PersonMiddleName,
             NULL as PersonSNILS,
-            'contperson' as sourceTable,
-            cip.cpUID as entityKey, -- Ключ контактного лица
+            'CI_ContPersons_test' as sourceTable, -- <<< Имя таблицы
+            cip.cpUID as entityKey, -- <<< Ключ найденной сущности (конт.лица)
             cip.BaseName as baseName,
-            NULL as relatedINN, -- Для контактных лиц по ИНН организации - relatedINN не применимо как target INN
-            cip.cpNameFull as relatedEntityName -- Имя контактного лица
+            NULL as relatedINN,
+            cip.cpNameFull as relatedEntityName,
+            'contperson_by_org_inn' as searchContext -- <<< Контекст поиска
         FROM CI_ContPersons_test cip
         WHERE cip.conINN IN (${innParams.join(', ')}) -- Совпадение по ИНН организации
     `;
 
-    // --- НОВЫЕ запросы для поиска по ИНН физических лиц ---
-    // Запрос 5: Совпадения в CI_Employees.fzINN (поиск организаций, где физлицо работает/работало)
+    // --- Запросы для поиска по ИНН физических лиц ---
+    // Запрос 4: Совпадения в CI_Employees.fzINN (поиск организаций, где физлицо работает/работало)
     const employeeFzINNQuery = `
         SELECT
             ce.fzINN as contactUNID, -- ИНН физлица (связанная сущность)
@@ -105,20 +114,21 @@ function buildINNQuery(innArray) {
             ce.phFunction as phFunction,
             ce.phEventType as phEventType,
             ce.phDate as phDate,
-            NULL as PersonLastName, -- Не из CF_Persons в этом запросе
+            NULL as PersonLastName,
             NULL as PersonFirstName,
             NULL as PersonMiddleName,
             NULL as PersonSNILS,
-            'employee_by_person_inn' as sourceTable, -- Новый тип источника
-            ce.phOrgINN as entityKey, -- Ключ организации
+            'CI_Employees_test' as sourceTable, -- <<< Имя таблицы
+            ce.phOrgINN as entityKey, -- <<< Ключ найденной сущности (организации)
             ce.BaseName as baseName,
-            ce.fzINN as relatedINN, -- ИНН самого физлица - это target INN
-            ce.fzFIO as relatedEntityName -- Имя физлица (из CI_Employees)
+            ce.fzINN as relatedINN, -- ИНН самого физлица
+            ce.fzFIO as relatedEntityName,
+            'employee_by_person_inn' as searchContext -- <<< Контекст поиска
         FROM CI_Employees_test ce
         WHERE ce.fzINN IN (${innParams.join(', ')}) -- Совпадение по ИНН физлица
     `;
 
-    // Запрос 6: Совпадения в CF_Persons.INN (поиск организаций через предыдущие места работы)
+    // Запрос 5: Совпадения в CF_Persons.INN -> CF_PrevWork (поиск организаций через предыдущие места работы)
     const personsINNQuery = `
         SELECT
             cp.INN as contactUNID, -- ИНН физлица (связанная сущность)
@@ -131,25 +141,25 @@ function buildINNQuery(innArray) {
             NULL as cpUID,
             cp.UNID as PersonUNID, -- PersonUNID физлица
             CONCAT(cp.LastName, ' ', cp.FirstName, ' ', COALESCE(cp.MiddleName, '')) as fzFIO, -- Собираем ФИО из CF_Persons
-            NULL as phFunction, -- Нет в CF_PrevWork
-            NULL as phEventType, -- Нет в CF_PrevWork
-            NULL as phDate, -- Нет в CF_PrevWork
-            cp.LastName as PersonLastName, -- Фамилия из CF_Persons
-            cp.FirstName as PersonFirstName, -- Имя из CF_Persons
-            cp.MiddleName as PersonMiddleName, -- Отчество из CF_Persons
-            cp.SNILS as PersonSNILS, -- SNILS из CF_Persons
-            'person_by_inn_via_prevwork' as sourceTable, -- Новый тип источника
-            cpw.OGRN as entityKey, -- Ключ организации (можно использовать OGRN или INN)
-            NULL as baseName, -- BaseName возможно нет в CF_PrevWork_test
-            cp.INN as relatedINN, -- ИНН самого физлица - это target INN
-            CONCAT(cp.LastName, ' ', cp.FirstName, ' ', COALESCE(cp.MiddleName, '')) as relatedEntityName -- Имя физлица
+            NULL as phFunction,
+            NULL as phEventType,
+            NULL as phDate,
+            cp.LastName as PersonLastName,
+            cp.FirstName as PersonFirstName,
+            cp.MiddleName as PersonMiddleName,
+            cp.SNILS as PersonSNILS,
+            'CF_PrevWork_test' as sourceTable, -- <<< Имя таблицы (таблица, откуда взяты данные org name/INN)
+            cpw.OGRN as entityKey, -- <<< Ключ найденной сущности (организации)
+            NULL as baseName,
+            cp.INN as relatedINN, -- ИНН самого физлица
+            CONCAT(cp.LastName, ' ', cp.FirstName, ' ', COALESCE(cp.MiddleName, '')) as relatedEntityName,
+            'prevwork_by_person_inn_via_join' as searchContext -- <<< Контекст поиска
         FROM CF_Persons_test cp
         JOIN CF_PrevWork_test cpw ON cp.UNID = cpw.PersonUNID -- Соединяем с предыдущими местами работы
         WHERE cp.INN IN (${innParams.join(', ')}) -- Совпадение по ИНН физлица
     `;
 
-    // --- НОВЫЙ запрос: Совпадения в CF_Persons.INN (поиск самого физлица по ИНН, без JOIN на prevwork) ---
-    // Этот запрос находит *саму персону* по ИНН, даже если у неё нет prevwork.
+    // Запрос 6: Совпадения в CF_Persons.INN (поиск самого физлица по ИНН, без JOIN)
     const personDirectINNQuery = `
         SELECT
             cp.INN as contactUNID, -- ИНН физлица (связанная сущность)
@@ -165,20 +175,21 @@ function buildINNQuery(innArray) {
             NULL as phFunction,
             NULL as phEventType,
             NULL as phDate,
-            cp.LastName as PersonLastName, -- Фамилия из CF_Persons
-            cp.FirstName as PersonFirstName, -- Имя из CF_Persons
-            cp.MiddleName as PersonMiddleName, -- Отчество из CF_Persons
-            cp.SNILS as PersonSNILS, -- SNILS из CF_Persons
-            'person_direct_inn_match' as sourceTable, -- Новый тип источника
-            cp.UNID as entityKey, -- Ключ самой персоны
-            NULL as baseName, -- BaseName возможно нет в CF_Persons_test
-            cp.INN as relatedINN, -- ИНН самого физлица - это target INN
-            CONCAT(cp.LastName, ' ', cp.FirstName, ' ', COALESCE(cp.MiddleName, '')) as relatedEntityName -- Имя физлица
+            cp.LastName as PersonLastName,
+            cp.FirstName as PersonFirstName,
+            cp.MiddleName as PersonMiddleName,
+            cp.SNILS as PersonSNILS,
+            'CF_Persons_test' as sourceTable, -- <<< Имя таблицы
+            cp.UNID as entityKey, -- <<< Ключ найденной сущности (физ.лица)
+            NULL as baseName,
+            cp.INN as relatedINN, -- ИНН самого физлица
+            CONCAT(cp.LastName, ' ', cp.FirstName, ' ', COALESCE(cp.MiddleName, '')) as relatedEntityName,
+            'person_direct_inn_match' as searchContext -- <<< Контекст поиска
         FROM CF_Persons_test cp
         WHERE cp.INN IN (${innParams.join(', ')}) -- Совпадение по ИНН физлица (без JOIN)
     `;
 
-    // --- НОВЫЙ запрос: Совпадения в CF_PrevWork.INN (поиск людей, работавших в организации/ИП с данным ИНН) ---
+    // Запрос 7: Совпадения в CF_PrevWork.INN (поиск людей, работавших в организации/ИП с данным ИНН)
     const prevWorkINNQuery = `
         SELECT
             cpw.INN as contactUNID, -- ИНН организации/ИП (связанная сущность)
@@ -194,15 +205,16 @@ function buildINNQuery(innArray) {
             NULL as phFunction,
             NULL as phEventType,
             NULL as phDate,
-            NULL as PersonLastName, -- Не из CF_Persons в этом запросе
+            NULL as PersonLastName,
             NULL as PersonFirstName,
             NULL as PersonMiddleName,
             NULL as PersonSNILS,
-            'prevwork_by_org_inn' as sourceTable, -- Новый тип источника
-            cpw.PersonUNID as entityKey, -- Ключ физлица (человек, работавший в этой организации)
-            NULL as baseName, -- BaseName возможно нет в CF_PrevWork_test
-            cpw.INN as relatedINN, -- ИНН организации/ИП - это target INN
-            cpw.Caption as relatedEntityName -- Название организации/ИП
+            'CF_PrevWork_test' as sourceTable, -- <<< Имя таблицы
+            cpw.PersonUNID as entityKey, -- <<< Ключ найденной сущности (физ.лица)
+            NULL as baseName,
+            cpw.INN as relatedINN, -- ИНН организации/ИП
+            cpw.Caption as relatedEntityName,
+            'prevwork_by_org_inn' as searchContext -- <<< Контекст поиска
         FROM CF_PrevWork_test cpw
         WHERE cpw.INN IN (${innParams.join(', ')}) -- Совпадение по ИНН организации/ИП (где человек работал)
     `;
@@ -210,5 +222,3 @@ function buildINNQuery(innArray) {
     // Собираем все запросы в один UNION ALL
     return `${contragentINNQuery} UNION ALL ${employeeINNQuery} UNION ALL ${contPersonINNQuery} UNION ALL ${employeeFzINNQuery} UNION ALL ${personsINNQuery} UNION ALL ${personDirectINNQuery} UNION ALL ${prevWorkINNQuery}`;
 }
-
-export {buildINNQuery}
