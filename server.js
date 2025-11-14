@@ -32,6 +32,8 @@ app.post('/api/search', async (req, res) => {
         // Шаг 2: Получить данные из Delta
         const deltaResults = await fetchDeltaData(query);
 
+        console.log("Что нашла дельта безопасности: ", deltaResults);
+
 
         // Шаг 4: Найти связи для объединённых результатов
         const resultsWithConnections = await findConnections([...deltaResults, ...localResults]);

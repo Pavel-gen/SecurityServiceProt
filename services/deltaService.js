@@ -3,234 +3,245 @@
 import axios from 'axios';
 import 'dotenv/config';
 
-const token = process.env.DELTA_SECURITY_TOKEN;
+// --- КОНСТАНТЫ И КОНФИГУРАЦИЯ ---
+const DELTA_CONFIG = {
+    BASE_URL: 'https://service.deltasecurity.ru/api2/find',
+    TOKEN: process.env.DELTA_SECURITY_TOKEN,
+    ENDPOINTS: {
+        COMPANY: 'company',
+        PERSON: 'person', 
+        IP: 'ip'
+    },
+    STATUS: {
+        SUCCESS: 1,
+        NO_RESULTS: 2
+    }
+};
 
-if (!token) {
-    console.error('Токен Delta не найден в .env, запросы к Delta будут пропущены.');
+// --- ВАЛИДАЦИЯ ---
+function validateToken() {
+    if (!DELTA_CONFIG.TOKEN) {
+        console.error('❌ Токен Delta не найден в .env, запросы к Delta будут пропущены.');
+        return false;
+    }
+    return true;
 }
 
-// --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Нормализация результата Delta к формату CI_Contragent ---
-// Эта функция преобразует ответ от любого из эндпоинтов (company, person, ip) в общий формат.
+function validateQuery(query) {
+    if (!query || query.trim().length < 3) {
+        console.log("⏩ Запрос к Delta: пустой или короткий query, пропускаем.");
+        return false;
+    }
+    return true;
+}
+
+// --- УТИЛИТЫ ---
+function buildDeltaUrl(endpoint, params = {}) {
+    const searchParams = new URLSearchParams({
+        ...params,
+        token: DELTA_CONFIG.TOKEN
+    });
+    return `${DELTA_CONFIG.BASE_URL}/${endpoint}?${searchParams.toString()}`;
+}
+
+function isHtmlResponse(response) {
+    return response.headers['content-type']?.includes('text/html');
+}
+
+function createUniqueId(item) {
+    return `${item.INN || 'NO_INN'}_${item.NameShort || 'NO_NAME'}`;
+}
+
+// --- НОРМАЛИЗАЦИЯ ДАННЫХ ---
 function normalizeDeltaResult(deltaItem, sourceEndpoint) {
-    // Определяем, что пришло из Delta и как это отнести к полям CI_Contragent
+    const entityTypeConfig = getEntityTypeConfig(sourceEndpoint);
+    
     const normalized = {
-        // Общие поля
+        // Основные идентификаторы
         INN: deltaItem.inn || null,
-        OGRN: deltaItem.ogrn || deltaItem.ogrnip || null, // OGRN для юрлиц, OGRNIP для ИП
+        OGRN: deltaItem.ogrn || deltaItem.ogrnip || null,
         KPP: deltaItem.kpp || null,
-        NameShort: deltaItem.short_name || deltaItem.name_short || deltaItem.full_name || deltaItem.name_full || deltaItem.fio || null,
-        NameFull: deltaItem.full_name || deltaItem.name_full || deltaItem.short_name || deltaItem.name_short || deltaItem.fio || null,
-        // PhoneNum: deltaItem.phone || null, // Delta может возвращать телефон в разных местах, нужно уточнить структуру
-        // eMail: deltaItem.email || null, // Delta может возвращать email в разных местах
-        AddressUr: deltaItem.register_address || deltaItem.residence_address || null, // Уточнить, какой адрес использовать
-        UrFiz: null, // Будет установлено ниже
-        fIP: null,   // Будет установлено ниже
-        // delta_info: deltaItem, // Если нужно сохранить оригинальные данные Delta, раскомментируйте (необязательно)
-        // Поля, специфичные для Delta или дополнительные
+        
+        // Наименования
+        NameShort: getBestName(deltaItem, 'short'),
+        NameFull: getBestName(deltaItem, 'full'),
+        
+        // Адреса
+        AddressUr: deltaItem.register_address || deltaItem.residence_address || null,
+        
+        // Типизация
+        UrFiz: entityTypeConfig.urFiz,
+        fIP: entityTypeConfig.fIP,
+        type: entityTypeConfig.type,
+        
+        // Дополнительная информация
         status: deltaItem.status || null,
         charter_capital: deltaItem.charter_capital || null,
         main_activity: deltaItem.main_activity || deltaItem.okved || null,
-        register_date: deltaItem.register_date || deltaItem.birth_date || null, // Регистрация или дата рождения
-        // link: deltaItem.link || null, // Ссылка на карточку
-        // company_id: deltaItem.company_id || deltaItem.person_id || deltaItem.id || null, // Унифицированный ID Delta
-        type: null, // Будет установлено ниже
-        sourceEndpoint: sourceEndpoint, // Для отладки, можно убрать
-        // --- ДОБАВЛЯЕМ ИНФОРМАЦИЮ ОБ ИСТОЧНИКЕ ---
+        register_date: deltaItem.register_date || deltaItem.birth_date || null,
+        
+        // Мета-информация
         source: 'delta',
-        sourceTable: null, // Delta не предоставляет информацию о таблице БД
-        baseName: null,    // Delta не предоставляет информацию о BaseName
-        // ---
-        // Добавим оригинальный ответ как deltaRaw, если нужно
+        sourceEndpoint: sourceEndpoint,
+        sourceTable: null,
+        baseName: null,
         deltaRaw: deltaItem
     };
 
-    // Определяем тип сущности на основе sourceEndpoint и полей Delta
-    if (sourceEndpoint === 'company') {
-        normalized.UrFiz = 1; // Условно, юрлицо
-        normalized.fIP = 0; // Не ИП
-        normalized.type = 'juridical';
-    } else if (sourceEndpoint === 'person') {
-        normalized.UrFiz = 2; // Условно, физлицо
-        normalized.fIP = 0; // Не ИП
-        normalized.type = 'physical';
-    } else if (sourceEndpoint === 'ip') {
-        normalized.UrFiz = 2; // Условно, физлицо (ИП - это физлицо)
-        normalized.fIP = 1; // Это ИП
-        normalized.type = 'ip';
-    } else {
-        normalized.type = 'unknown';
-    }
-
     return normalized;
 }
-// --- ФУНКЦИЯ: Запрос к эндпоинту company ---
+
+function getEntityTypeConfig(sourceEndpoint) {
+    const configs = {
+        company: { urFiz: 1, fIP: 0, type: 'juridical' },
+        person: { urFiz: 2, fIP: 0, type: 'physical' },
+        ip: { urFiz: 2, fIP: 1, type: 'ip' }
+    };
+    
+    return configs[sourceEndpoint] || { urFiz: null, fIP: null, type: 'unknown' };
+}
+
+function getBestName(deltaItem, nameType) {
+    const nameVariants = {
+        short: [
+            deltaItem.short_name,
+            deltaItem.name_short, 
+            deltaItem.fio,
+            deltaItem.full_name,
+            deltaItem.name_full
+        ],
+        full: [
+            deltaItem.full_name,
+            deltaItem.name_full,
+            deltaItem.short_name,
+            deltaItem.name_short,
+            deltaItem.fio
+        ]
+    };
+    
+    return nameVariants[nameType].find(name => name) || null;
+}
+
+// --- ОБРАБОТЧИКИ ОТВЕТОВ ---
+function handleDeltaResponse(response, endpoint) {
+    console.log(`[Delta API] Ответ от ${endpoint}:`, response.data.status_id, response.data.status_text);
+
+    if (response.data.status_id === DELTA_CONFIG.STATUS.SUCCESS && 
+        Array.isArray(response.data.result)) {
+        return response.data.result.map(item => normalizeDeltaResult(item, endpoint));
+    }
+    
+    console.log(`[Delta API] ${endpoint}: Нет данных или ошибка в формате ответа.`);
+    return [];
+}
+
+function handleDeltaError(error, endpoint, url) {
+    if (error.response && isHtmlResponse(error.response)) {
+        console.error(`[Delta API] Ошибка ${endpoint}: получен HTML-ответ. URL: ${url}`);
+        console.error(`[Delta API] Тело ошибки: ${error.response.data.substring(0, 200)}...`);
+    } else {
+        console.error(`[Delta API] Ошибка ${endpoint}:`, error.response?.data || error.message);
+    }
+    return [];
+}
+
+// --- API ЗАПРОСЫ ---
+async function makeDeltaRequest(endpoint, params = {}) {
+    if (!validateToken()) return [];
+    
+    const url = buildDeltaUrl(endpoint, params);
+    console.log(`[Delta API] Выполняем запрос к ${endpoint}: ${url}`);
+
+    try {
+        const response = await axios.get(url);
+        
+        if (isHtmlResponse(response)) {
+            console.error(`[Delta API] ${endpoint}: получен HTML-ответ. URL: ${url}`);
+            return [];
+        }
+        
+        return handleDeltaResponse(response, endpoint);
+    } catch (error) {
+        return handleDeltaError(error, endpoint, url);
+    }
+}
+
+// --- СПЕЦИФИЧНЫЕ ЗАПРОСЫ ---
 async function fetchDeltaCompany(query) {
-    if (!token) return [];
-    const url = `https://service.deltasecurity.ru/api2/find/company?query=${encodeURIComponent(query)}&token=${token}`;
-    console.log(`[Delta API] Выполняем запрос к company: ${url}`);
-
-    try {
-        const response = await axios.get(url);
-        console.log(`[Delta API] Ответ от company (статус):`, response.data.status_id, response.data.status_text);
-
-        if (response.data.status_id === 1 && Array.isArray(response.data.result)) {
-            // Нормализуем каждый элемент результата
-            return response.data.result.map(item => normalizeDeltaResult(item, 'company'));
-        } else {
-            console.log('[Delta API] Company: Нет данных или ошибка в формате ответа.');
-            return [];
-        }
-    } catch (error) {
-        console.error('[Delta API] Ошибка при запросе к company:', error.response?.data || error.message);
-        return [];
-    }
+    return makeDeltaRequest(DELTA_CONFIG.ENDPOINTS.COMPANY, { query });
 }
 
-// --- ФУНКЦИЯ: Запрос к эндпоинту person ---
 async function fetchDeltaPerson(query) {
-    if (!token) return [];
-    const url = `https://service.deltasecurity.ru/api2/find/person?query=${encodeURIComponent(query)}&token=${token}`;
-    console.log(`[Delta API] Выполняем запрос к person: ${url}`);
-
-    try {
-        const response = await axios.get(url);
-        console.log(`[Delta API] Ответ от person (статус):`, response.data.status_id, response.data.status_text);
-
-        if (response.data.status_id === 1 && Array.isArray(response.data.result)) {
-            // Нормализуем каждый элемент результата
-            return response.data.result.map(item => normalizeDeltaResult(item, 'person'));
-        } else {
-            console.log('[Delta API] Person: Нет данных или ошибка в формате ответа.');
-            return [];
-        }
-    } catch (error) {
-        console.error('[Delta API] Ошибка при запросе к person:', error.response?.data || error.message);
-        return [];
-    }
+    return makeDeltaRequest(DELTA_CONFIG.ENDPOINTS.PERSON, { query });
 }
 
-// --- ФУНКЦИЯ: Запрос к эндпоинту ip ---
-// services/deltaService.js
-
-// ... (ваш остальной код до fetchDeltaIP) ...
-
-// --- ФУНКЦИЯ: Запрос к эндпоинту ip ---
 async function fetchDeltaIP(query) {
-    if (!token) return [];
-    // Проверим, является ли query ИНН (10 или 12 для ИП) или ОГРНИП (15 для ИП)
-    // Или используем query как альтернативный параметр
+    const params = buildIPSearchParams(query);
+    return makeDeltaRequest(DELTA_CONFIG.ENDPOINTS.IP, params);
+}
+
+function buildIPSearchParams(query) {
     const isINN = /^\d{10,12}$/.test(query);
     const isOGRNIP = /^\d{15}$/.test(query);
-    let url;
-    if (isOGRNIP) {
-        url = `https://service.deltasecurity.ru/api2/find/ip?ogrnip=${query}&token=${token}`;
-    } else if (isINN) {
-        url = `https://service.deltasecurity.ru/api2/find/ip?inn=${query}&token=${token}`;
-    } else {
-        // Если не ИНН/ОГРНИП, используем query
-        url = `https://service.deltasecurity.ru/api2/find/ip?query=${encodeURIComponent(query)}&token=${token}`;
-    }
-    console.log(`[Delta API] Выполняем запрос к ip: ${url}`);
-
-    try {
-        const response = await axios.get(url);
-
-        // Проверяем, не вернулся ли HTML (ошибка)
-        if (response.headers['content-type'] && response.headers['content-type'].includes('text/html')) {
-            console.error(`[Delta API] Получен HTML-ответ от ip, возможно ошибка: ${url}`);
-            console.error(`[Delta API] Тело ответа: ${response.data.substring(0, 200)}...`); // Лог первых 200 символов
-            return []; // Возвращаем пустой массив
-        }
-
-        console.log(`[Delta API] Ответ от ip (статус):`, response.data.status_id, response.data.status_text);
-
-        if (response.data.status_id === 1 && Array.isArray(response.data.result)) {
-            // Нормализуем каждый элемент результата
-            return response.data.result.map(item => normalizeDeltaResult(item, 'ip'));
-        } else {
-            console.log('[Delta API] IP: Нет данных или ошибка в формате ответа.');
-            console.log('[Delta API] Тело ответа:', response.data); // Для отладки
-            return [];
-        }
-    } catch (error) {
-        // Проверим, не была ли ошибка связана с парсингом HTML
-        if (error.response && error.response.data && typeof error.response.data === 'string' && error.response.data.includes('html')) {
-             console.error(`[Delta API] Ошибка при запросе к ip: получен HTML-ответ (ошибка на стороне Delta). URL: ${url}`);
-             console.error(`[Delta API] Тело ошибки: ${error.response.data.substring(0, 200)}...`);
-        } else {
-             console.error('[Delta API] Ошибка при запросе к ip:', error.response?.data || error.message);
-        }
-        return []; // Возвращаем пустой массив даже при ошибке
-    }
+    
+    if (isOGRNIP) return { ogrnip: query };
+    if (isINN) return { inn: query };
+    return { query };
 }
 
-// ... (остальной код deltaService.js) ...
-// --- ОСНОВНАЯ ФУНКЦИЯ: Вызов всех подходящих эндпоинтов ---
+// --- ОСНОВНАЯ ФУНКЦИЯ ---
 async function fetchDeltaData(query) {
-    if (!token) {
-        console.error('Токен Delta не найден, пропускаем запрос к Delta.');
-        return [];
-    }
+    if (!validateToken() || !validateQuery(query)) return [];
 
-    if (!query || query.trim().length < 3) {
-        console.log("Запрос к Delta: пустой или короткий query, пропускаем.");
-        return [];
-    }
-
-    console.log(`[Delta API] Начинаем поиск по запросу: ${query}`);
-
-    // --- КОНТРОЛЬНЫЙ ОБЗОР ---
-    // Почта: Дельта НЕ принимает почту. Значит, не вызываем API по почте.
-    // Телефон/Имя/Адрес: Могут быть в query. Дельта принимает их через параметр query в company и ip.
-    // ФИО: Могут быть в query. Дельта принимает их через query в company, ip и person.
-    // ИНН/ОГРН/ОГРНИП: Могут быть в query. Дельта принимает их через query в company, ip и person.
-
-    // --- ВАЖНО ---
-    // Мы вызываем ВСЕ ТРИ эндпоинта с ОДНИМ И ТЕМ ЖЕ query.
-    // Это может привести к дубликатам (например, ИНН ИП найдётся и в person, и в ip).
-    // Это нормально, дедупликация может происходить позже (в findConnections или на фронтенде).
-    // Главное - получить все возможные результаты.
-
-    // Вызываем все три эндпоинта параллельно
-    let companyResults = [];
-    let personResults = [];
-    let ipResults = [];
+    console.log(`[Delta API] 🔍 Начинаем поиск по запросу: ${query}`);
 
     try {
-        [companyResults, personResults, ipResults] = await Promise.all([
+        const [companyResults, personResults, ipResults] = await Promise.all([
             fetchDeltaCompany(query),
             fetchDeltaPerson(query),
             fetchDeltaIP(query)
         ]);
+
+        const allResults = [...companyResults, ...personResults, ...ipResults];
+        const uniqueResults = deduplicateResults(allResults);
+
+        logSearchResults(allResults, uniqueResults);
+        return uniqueResults;
+
     } catch (error) {
-        // Обработка ошибки, если один из запросов упал, остальные могут быть успешны
-        console.error('[Delta API] Ошибка при параллельном запросе к одному или нескольким эндпоинтам:', error);
-        // Попытаемся получить результаты, которые успели выполниться
-        // Если Promise.all упадёт, то все результаты будут пустыми.
-        // Чтобы обработать частичный сбой, можно использовать отдельные Promise, но для простоты оставим так.
-        // В реальном приложении может потребоваться более сложная логика.
+        console.error('[Delta API] ❌ Ошибка при параллельном запросе:', error);
+        return [];
     }
-
-    // Объединяем результаты
-    const deltaResults = [...companyResults, ...personResults, ...ipResults];
-
-    // --- ОПЦИОНАЛЬНО: Простая дедупликация по ИНН и NameShort ---
-    // Если нужно избежать дубликатов на этом этапе
-    const seen = new Set();
-    const uniqueDeltaResults = [];
-    deltaResults.forEach(item => {
-        const uniqueId = `${item.INN || 'NO_INN'}_${item.NameShort || 'NO_NAME'}`;
-        if (!seen.has(uniqueId)) {
-            seen.add(uniqueId);
-            uniqueDeltaResults.push(item);
-        }
-    });
-
-    console.log(`[Delta API] Всего нормализованных результатов (до дедупликации): ${deltaResults.length}`);
-    console.log(`[Delta API] Всего уникальных нормализованных результатов: ${uniqueDeltaResults.length}`);
-    // console.log(`[Delta API] Примеры нормализованных результатов:`, uniqueDeltaResults.slice(0, 2)); // Для отладки
-
-    return uniqueDeltaResults; // Возвращаем объединённый и (опционально) дедуплицированный массив
 }
 
-export { fetchDeltaData, fetchDeltaCompany, fetchDeltaPerson, fetchDeltaIP, normalizeDeltaResult };
+function deduplicateResults(results) {
+    const seen = new Set();
+    return results.filter(item => {
+        const uniqueId = createUniqueId(item);
+        const isDuplicate = seen.has(uniqueId);
+        seen.add(uniqueId);
+        return !isDuplicate;
+    });
+}
+
+function logSearchResults(allResults, uniqueResults) {
+    console.log(`[Delta API] 📊 Результаты поиска:`);
+    console.log(`[Delta API]   Всего найдено: ${allResults.length}`);
+    console.log(`[Delta API]   После дедупликации: ${uniqueResults.length}`);
+    
+    if (uniqueResults.length > 0) {
+        console.log(`[Delta API]   Типы сущностей:`, {
+            juridical: uniqueResults.filter(r => r.type === 'juridical').length,
+            physical: uniqueResults.filter(r => r.type === 'physical').length,
+            ip: uniqueResults.filter(r => r.type === 'ip').length
+        });
+    }
+}
+
+export { 
+    fetchDeltaData, 
+    fetchDeltaCompany, 
+    fetchDeltaPerson, 
+    fetchDeltaIP, 
+    normalizeDeltaResult 
+};

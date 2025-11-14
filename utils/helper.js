@@ -40,8 +40,17 @@ function normalizePhoneSQL(columnName) {
 
 function getEntityKey(entity) {
     if (!entity) {
-        // console.log('getEntityKey: entity is null/undefined');
         return null;
+    }
+
+    // --- ОБРАБОТКА DELTA СУЩНОСТЕЙ ---
+    if (entity.source === 'delta') {
+        if (entity.INN) {
+            return `delta_${entity.type}_${entity.INN}`;
+        }
+        if (entity.NameShort) {
+            return `delta_${entity.type}_${entity.NameShort.replace(/\s+/g, '_')}`;
+        }
     }
 
     // --- ОБРАБОТКА ЛОКАЛЬНЫХ СУЩНОСТЕЙ ---
@@ -49,34 +58,32 @@ function getEntityKey(entity) {
         let localId = null;
         let idType = '';
 
-        // console.log('getEntityKey для:', {
-        //     sourceTable: entity.sourceTable,
-        //     UNID: entity.UNID,
-        //     fzUID: entity.fzUID, 
-        //     cpUID: entity.cpUID,
-        //     PersonUNID: entity.PersonUNID,
-        //     contactUNID: entity.contactUNID
-        // });
-
-        switch (entity.sourceTable) {
-            case 'CI_Contragent_test':
+        // НОРМАЛИЗУЕМ НАЗВАНИЯ ТАБЛИЦ
+        const normalizedTable = normalizeTableName(entity.sourceTable);
+        
+        switch (normalizedTable) {
+            case 'ci_contragent_test':
                 localId = entity.UNID || entity.contactUNID;
                 idType = 'UNID';
                 break;
-            case 'CI_ContPersons_test':
+            case 'ci_contpersons_test':
                 localId = entity.cpUID || entity.contactUNID;
                 idType = 'cpUID';
                 break;
-            case 'CI_Employees_test':
+            case 'ci_employees_test':
                 localId = entity.fzUID || entity.contactUNID;
                 idType = 'fzUID';
                 break;
-            case 'CF_Persons_test':
+            case 'cf_persons_test':
                 localId = entity.UNID || entity.PersonUNID;
                 idType = 'UNID';
                 break;
-            case 'CF_Contacts_test':
+            case 'cf_contacts_test':
                 localId = entity.PersonUNID || entity.contactUNID;
+                idType = 'PersonUNID';
+                break;
+            case 'cf_prevwork_test':
+                localId = entity.PersonUNID;
                 idType = 'PersonUNID';
                 break;
             default:
@@ -85,16 +92,40 @@ function getEntityKey(entity) {
         }
 
         if (localId) {
-            const key = `${entity.sourceTable}_${idType}_${localId}`;
-            // console.log('Сгенерирован ключ:', key);
+            const key = `${normalizedTable}_${idType}_${localId}`;
             return key;
         } else {
-            console.log('getEntityKey: не найден localId для', entity.sourceTable);
+            console.log('getEntityKey: не найден localId для', normalizedTable);
         }
     }
 
-    // console.log('getEntityKey: fallback для', entity);
+    // Fallback
     return entity.PersonUNID || entity.UNID || entity.fzUID || entity.cpUID || entity.INN;
+}
+
+// Новая функция для нормализации названий таблиц
+function normalizeTableName(tableName) {
+    if (!tableName) return tableName;
+    
+    const tableMapping = {
+        'contragent': 'ci_contragent_test',
+        'CI_Contragent_test': 'ci_contragent_test',
+        'contperson': 'ci_contpersons_test', 
+        'CI_ContPersons_test': 'ci_contpersons_test',
+        'employee': 'ci_employees_test',
+        'CI_Employees_test': 'ci_employees_test',
+        'CF_Persons_test': 'cf_persons_test',
+        'CF_Contacts_test': 'cf_contacts_test',
+        'CF_PrevWork_test': 'cf_prevwork_test',
+        'person_direct_inn_match': 'cf_persons_test',
+        'person_by_inn_via_prevwork': 'cf_persons_test',
+        'prevwork_by_org_inn': 'cf_prevwork_test',
+        'employee_by_person_inn': 'ci_employees_test'
+    };
+    
+    const normalized = tableMapping[tableName] || tableName.toLowerCase();
+    // console.log(`🔧 Нормализация таблицы: ${tableName} -> ${normalized}`);
+    return normalized;
 }
 
 

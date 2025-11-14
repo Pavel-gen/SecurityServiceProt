@@ -24,6 +24,8 @@ async function findConnectionsByEmail(targetEntities) {
         return createEmptyConnectionsMap(entitiesByKey);
     }
 
+    console.log("Начинаем поиск по email: ", targetEmails);
+
     const connectionsMap = createEmptyConnectionsMap(entitiesByKey);
 
     try {
@@ -40,26 +42,26 @@ async function findConnectionsByEmail(targetEntities) {
     console.log(`Итоговый размер connectionsMap: ${connectionsMap.size}`);
     
     // ОБНОВЛЕННОЕ ЛОГИРОВАНИЕ ДЛЯ НОВОЙ СТРУКТУРЫ
-    console.log("=== ДЕТАЛЬНЫЙ ПРОСМОТР CONNECTIONS MAP ===");
-    connectionsMap.forEach((connections, entityKey) => {
-        console.log(`Сущность: ${entityKey}`);
-        Object.entries(connections).forEach(([connectionKey, connectionGroup]) => {
-            console.log(`  Группа связей: ${connectionKey}`);
-            console.log(`  Связанная сущность:`, connectionGroup.entity?.NameShort || 'N/A');
-            console.log(`  Количество связей: ${connectionGroup.connections?.length || 0}`);
+    // console.log("=== ДЕТАЛЬНЫЙ ПРОСМОТР CONNECTIONS MAP ===");
+    // connectionsMap.forEach((connections, entityKey) => {
+    //     console.log(`Сущность: ${entityKey}`);
+    //     Object.entries(connections).forEach(([connectionKey, connectionGroup]) => {
+    //         console.log(`  Группа связей: ${connectionKey}`);
+    //         console.log(`  Связанная сущность:`, connectionGroup.entity?.NameShort || 'N/A');
+    //         console.log(`  Количество связей: ${connectionGroup.connections?.length || 0}`);
             
-            if (connectionGroup.connections && Array.isArray(connectionGroup.connections)) {
-                connectionGroup.connections.forEach((connection, index) => {
-                    console.log(`    Связь ${index + 1}:`);
-                    console.log(`      Тип: ${connection.connectionType}`);
-                    console.log(`      Статус: ${connection.connectionStatus}`);
-                    console.log(`      Детали: ${connection.connectionDetails}`);
-                });
-            } else {
-                console.log(`    ❌ connections не является массивом:`, connectionGroup.connections);
-            }
-        });
-    });
+    //         if (connectionGroup.connections && Array.isArray(connectionGroup.connections)) {
+    //             connectionGroup.connections.forEach((connection, index) => {
+    //                 console.log(`    Связь ${index + 1}:`);
+    //                 console.log(`      Тип: ${connection.connectionType}`);
+    //                 console.log(`      Статус: ${connection.connectionStatus}`);
+    //                 console.log(`      Детали: ${connection.connectionDetails}`);
+    //             });
+    //         } else {
+    //             console.log(`    ❌ connections не является массивом:`, connectionGroup.connections);
+    //         }
+    //     });
+    // });
 
     return connectionsMap;
 }
@@ -238,13 +240,19 @@ function createFullEntityFromEmailRow(row) {
         // ДОПОЛНИТЕЛЬНЫЕ ПОЛЯ ИЗ SQL
         prevWorkCaption: row.prevWorkCaption,
         WorkPeriod: row.WorkPeriod,
-        relatedPersonUNID: row.relatedPersonUNID
+        relatedPersonUNID: row.relatedPersonUNID,
+        
+        // ВАЖНО: Добавляем поля для ИНН поиска
+        phOrgINN: row.phOrgINN,  // ИНН организации для сотрудников
+        fzINN: row.fzINN,        // Личный ИНН сотрудника
+        conINN: row.conINN       // ИНН организации для контактных лиц
     };
     
     entity.type = determineEntityType(entity);
     
     return entity;
 }
+
 function determineEmailConnectionInfo(row) {
     const connectionMap = {
         [EMAIL_SEARCH_TYPES.CONTRAGENT]: { connectionType: 'email_match', connectionStatus: 'organization_match' },

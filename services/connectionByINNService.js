@@ -26,7 +26,6 @@ const CONNECTION_STATUS = {
 
 // --- ОСНОВНАЯ ФУНКЦИЯ ---
 async function findConnectionsByINN(targetEntities) {
-    console.log("Запуск findConnectionsByINN");
 
     const targetINNs = new Set();
     const entitiesByKey = new Map();
@@ -239,7 +238,7 @@ async function processSinglePrevWorkRecord(record, entitiesByKey, connectionsMap
     const personDetails = personDetailsMap.get(PersonUNID);
     const connectionInfo = createPrevWorkConnection(record, personDetails);
     
-    addConnectionToTargets(entitiesByKey, connectionsMap, orgINN, connectionInfo);
+    addConnectionToTargets(entitiesByKey, connectionsMap, orgINN, connectionInfo, 'inn');
 }
 
 function createPrevWorkConnection(record, personDetails) {
@@ -313,10 +312,10 @@ function processOtherRecords(records, entitiesByKey, connectionsMap) {
         
         if (shouldUseFoundINN(record)) {
             // console.log(`  Используем foundINN: ${record.contactINN}`);
-            addConnectionToTargets(entitiesByKey, connectionsMap, record.contactINN, connectionInfo);
+            addConnectionToTargets(entitiesByKey, connectionsMap, record.contactINN, connectionInfo, 'inn');
         } else if (shouldUseRelatedINN(record)) {
             // console.log(`  Используем relatedINN: ${record.relatedINN}`);
-            addConnectionToTargets(entitiesByKey, connectionsMap, record.relatedINN, connectionInfo);
+            addConnectionToTargets(entitiesByKey, connectionsMap, record.relatedINN, connectionInfo, 'inn');
         } else {
             // console.log(`  НЕ ИСПОЛЬЗУЕТСЯ: ${record.sourceTable}`);
         }
@@ -363,46 +362,37 @@ function createOtherRecordConnection(record) {
 }
 
 // --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
-function addConnectionToTargets(entitiesByKey, connectionsMap, searchINN, connectionInfo) {
-    // console.log(`=== addConnectionToTargets: searchINN=${searchINN} ===`);
-    
-    let matches = 0;
+function addConnectionToTargets(entitiesByKey, connectionsMap, searchKey, connectionInfo, type = 'inn') {
     entitiesByKey.forEach((targetEntity, targetEntityKey) => {
         if (targetEntity.type === 'prevwork') {
             return;
         }
         
-        // Проверяем ВСЕ ИНН сущности, а не только entity.INN
+        // Проверяем ВСЕ ИНН сущности
         const entityINNs = targetEntity.allINNs || [targetEntity.INN];
-        const hasMatchingINN = entityINNs.includes(searchINN);
+        const hasMatchingINN = entityINNs.includes(searchKey);
         
-        if (!hasMatchingINN) {
-            // console.log(`  INN не совпадает: target имеет ${entityINNs}, search=${searchINN}`);
-            return;
-        }
+        if (!hasMatchingINN) return;
 
         // Проверка на самосвязь
         const connectedEntity = connectionInfo.connectedEntity;
         if (getEntityKey(targetEntity) === getEntityKey(connectedEntity)) {
-            // console.log(`  Пропускаем самосвязь: ${targetEntityKey}`);
             return;
         }
-
-        // console.log(`  НАЙДЕНО СОВПАДЕНИЕ: ${targetEntityKey} с INN ${searchINN}`);
-        matches++;
 
         if (!connectionsMap.has(targetEntityKey)) {
             connectionsMap.set(targetEntityKey, {});
         }
         
-        if (!connectionsMap.get(targetEntityKey)[searchINN]) {
-            connectionsMap.get(targetEntityKey)[searchINN] = [];
+        // ИСПОЛЬЗУЕМ ЕДИНУЮ СТРУКТУРУ КАК В EMAIL SERVICE
+        if (!connectionsMap.get(targetEntityKey)[searchKey]) {
+            connectionsMap.get(targetEntityKey)[searchKey] = {
+                connections: []
+            };
         }
         
-        connectionsMap.get(targetEntityKey)[searchINN].push(connectionInfo);
+        connectionsMap.get(targetEntityKey)[searchKey].connections.push(connectionInfo);
     });
-
-    // console.log(`  Всего совпадений для INN ${searchINN}: ${matches}`);
 }
 
 function shouldUseFoundINN(record) {

@@ -127,109 +127,88 @@ async function fetchLocalData(query) {
 
     // --- ОБНОВЛЕННЫЕ ЗАПРОСЫ С УЧЕТОМ НОРМАЛИЗАЦИИ ТЕЛЕФОНОВ ---
     // Запрос 1: Поиск в CI_Contragent_test
-    const contragentQuery = `
-        SELECT
-            UNID, ConCode, INN, KPP, OGRN, NameShort, NameFull, PhoneNum, eMail, UrFiz, fIP, AddressUr, AddressUFakt, fSZ, fIP as fIP_CG,
-            BaseName -- Добавляем BaseName
-        FROM CI_Contragent_test
-        WHERE
-            -- Основной поиск по тексту, включая email (перестраховка)
-            (@query IS NOT NULL AND (INN LIKE @query OR NameShort LIKE @query OR NameFull LIKE @query OR UNID LIKE @query OR OGRN LIKE @query OR AddressUr LIKE @query OR AddressUFakt LIKE @query OR eMail LIKE @query))
-            OR
-            -- Поиск по нормализованному телефону (если query был телефоном) - ИСПОЛЬЗУЕМ normalizePhoneSQL
-            (@phoneQuery IS NOT NULL AND ${normalizePhoneSQL('PhoneNum')} = @phoneQuery) -- Точное совпадение нормализованных номеров
-            OR
-            -- Поиск по email (если query был email)
-            (@emailQuery IS NOT NULL AND eMail LIKE @emailQuery)
-            OR
-            -- Поиск по OGRN (если query был OGRN)
-            (@ogrnQuery IS NOT NULL AND OGRN = @ogrnQuery) -- Точное совпадение для OGRN
-    `;
+const contragentQuery = `
+    SELECT
+        UNID, ConCode, INN, KPP, OGRN, NameShort, NameFull, PhoneNum, eMail, UrFiz, fIP, AddressUr, AddressUFakt, fSZ, fIP as fIP_CG,
+        BaseName
+    FROM CI_Contragent_test
+    WHERE
+        (@query IS NOT NULL AND (INN LIKE @query OR NameShort LIKE @query OR NameFull LIKE @query OR UNID LIKE @query OR OGRN LIKE @query OR AddressUr LIKE @query OR AddressUFakt LIKE @query OR eMail LIKE @query))
+        OR
+        (@phoneQuery IS NOT NULL AND ${normalizePhoneSQL('PhoneNum')} = @phoneQuery)
+        OR
+        (@emailQuery IS NOT NULL AND eMail LIKE @emailQuery)
+        OR
+        (@ogrnQuery IS NOT NULL AND OGRN = @ogrnQuery)
+`;
 
-    // Запрос 2: Поиск в CI_Employees_test
-    const employeeQuery = `
-        SELECT
-            fzUID, fzFIO, fzCode, fzDateB, fzAddress, fzAddressF, fzPhone, fzMail, fzINN,
-            emUID, phOrgUID, phOrgINN, phOrgName, phDep, phFunction, phEventType, phContractType, phDate, phRegistrator, phRegUID,
-            fzPhoneM,
-            BaseName -- Добавляем BaseName
-        FROM CI_Employees_test
-        WHERE
-            -- Основной поиск по тексту, включая email (перестраховка)
-            (@query IS NOT NULL AND (fzFIO LIKE @query OR fzINN LIKE @query OR fzUID LIKE @query OR phOrgINN LIKE @query OR fzAddress LIKE @query OR fzAddressF LIKE @query OR fzMail LIKE @query))
-            OR
-            -- Поиск по нормализованному телефону (если query был телефоном) - ИСПОЛЬЗУЕМ normalizePhoneSQL
-            (@phoneQuery IS NOT NULL AND (${normalizePhoneSQL('fzPhone')} = @phoneQuery OR ${normalizePhoneSQL('fzPhoneM')} = @phoneQuery))
-            OR
-            -- Поиск по email (если query был email)
-            (@emailQuery IS NOT NULL AND fzMail LIKE @emailQuery)
-    `;
+// Запрос 2: Поиск в CI_Employees_test
+const employeeQuery = `
+    SELECT
+        fzUID, fzFIO, fzCode, fzDateB, fzAddress, fzAddressF, fzPhone, fzMail, fzINN,
+        emUID, phOrgUID, phOrgINN, phOrgName, phDep, phFunction, phEventType, phContractType, phDate, phRegistrator, phRegUID,
+        fzPhoneM,
+        BaseName
+    FROM CI_Employees_test
+    WHERE
+        (@query IS NOT NULL AND (fzFIO LIKE @query OR fzINN LIKE @query OR fzUID LIKE @query OR phOrgINN LIKE @query OR fzAddress LIKE @query OR fzAddressF LIKE @query OR fzMail LIKE @query))
+        OR
+        (@phoneQuery IS NOT NULL AND (${normalizePhoneSQL('fzPhone')} = @phoneQuery OR ${normalizePhoneSQL('fzPhoneM')} = @phoneQuery))
+        OR
+        (@emailQuery IS NOT NULL AND fzMail LIKE @emailQuery)
+`;
 
-    // Запрос 3: Поиск в CI_ContPersons_test
-    const contPersonQuery = `
-        SELECT
-            cpUID, conUID, conCode, conINN, cpNameFull, cpName1, cpName2, cpName3, cpDateB, cpFunction, cpVid,
-            cpPhoneMob, cpPhoneMobS, cpPhoneWork, cpMail, cpAddress, cpCountry, cpReg, cpTown,
-            BaseName -- Добавляем BaseName
-        FROM CI_ContPersons_test
-        WHERE
-            -- Основной поиск по тексту, включая email (перестраховка)
-            (@query IS NOT NULL AND (cpNameFull LIKE @query OR cpUID LIKE @query OR conINN LIKE @query OR cpAddress LIKE @query OR cpTown LIKE @query OR cpMail LIKE @query))
-            OR
-            -- Поиск по нормализованному телефону (если query был телефоном) - ИСПОЛЬЗУЕМ normalizePhoneSQL
-            (@phoneQuery IS NOT NULL AND (${normalizePhoneSQL('cpPhoneMob')} = @phoneQuery OR ${normalizePhoneSQL('cpPhoneMobS')} = @phoneQuery OR ${normalizePhoneSQL('cpPhoneWork')} = @phoneQuery))
-            OR
-            -- Поиск по email (если query был email)
-            (@emailQuery IS NOT NULL AND cpMail LIKE @emailQuery)
-    `;
+// Запрос 3: Поиск в CI_ContPersons_test
+const contPersonQuery = `
+    SELECT
+        cpUID, conUID, conCode, conINN, cpNameFull, cpName1, cpName2, cpName3, cpDateB, cpFunction, cpVid,
+        cpPhoneMob, cpPhoneMobS, cpPhoneWork, cpMail, cpAddress, cpCountry, cpReg, cpTown,
+        BaseName
+    FROM CI_ContPersons_test
+    WHERE
+        (@query IS NOT NULL AND (cpNameFull LIKE @query OR cpUID LIKE @query OR conINN LIKE @query OR cpAddress LIKE @query OR cpTown LIKE @query OR cpMail LIKE @query))
+        OR
+        (@phoneQuery IS NOT NULL AND (${normalizePhoneSQL('cpPhoneMob')} = @phoneQuery OR ${normalizePhoneSQL('cpPhoneMobS')} = @phoneQuery OR ${normalizePhoneSQL('cpPhoneWork')} = @phoneQuery))
+        OR
+        (@emailQuery IS NOT NULL AND cpMail LIKE @emailQuery)
+`;
 
-    // Запрос 4: Поиск в CF_PrevWork_test
-    const prevWorkQuery = `
-        SELECT
-            PersonUNID, INN, OGRN, Caption, Phone, EMail, WorkPeriod
-        FROM CF_PrevWork_test
-        WHERE
-            -- Основной поиск по тексту, включая email (перестраховка)
-            (@query IS NOT NULL AND (Caption LIKE @query OR PersonUNID LIKE @query OR INN LIKE @query OR EMail LIKE @query))
-            OR
-            -- Поиск по нормализованному телефону (если query был телефоном) - ИСПОЛЬЗУЕМ normalizePhoneSQL
-            (@phoneQuery IS NOT NULL AND ${normalizePhoneSQL('Phone')} = @phoneQuery)
-            OR
-            -- Поиск по email (если query был email)
-            (@emailQuery IS NOT NULL AND EMail LIKE @emailQuery)
-            OR
-            -- Поиск по OGRN (если query был OGRN)
-            (@ogrnQuery IS NOT NULL AND OGRN = @ogrnQuery) -- Точное совпадение для OGRN
-    `;
+// Запрос 4: Поиск в CF_PrevWork_test
+const prevWorkQuery = `
+    SELECT
+        PersonUNID, INN, OGRN, Caption, Phone, EMail, WorkPeriod
+    FROM CF_PrevWork_test
+    WHERE
+        (@query IS NOT NULL AND (Caption LIKE @query OR PersonUNID LIKE @query OR INN LIKE @query OR EMail LIKE @query))
+        OR
+        (@phoneQuery IS NOT NULL AND ${normalizePhoneSQL('Phone')} = @phoneQuery)
+        OR
+        (@emailQuery IS NOT NULL AND EMail LIKE @emailQuery)
+        OR
+        (@ogrnQuery IS NOT NULL AND OGRN = @ogrnQuery)
+`;
 
-    // Запрос 5: Поиск в CF_Persons_test
-    const personQuery = `
-        SELECT
-            UNID, INN, SNILS, FirstName, LastName, MiddleName, BirthDate, RegAddressPassport, RegAddressForm, ResAddressForm, State
-        FROM CF_Persons_test
-        WHERE
-            -- Основной поиск по тексту (перестраховка)
-            -- Телефоны/Emails в CF_Persons_test отсутствуют, но адреса могут содержать
-            (@query IS NOT NULL AND (LastName LIKE @query OR FirstName LIKE @query OR MiddleName LIKE @query OR UNID LIKE @query OR INN LIKE @query OR RegAddressPassport LIKE @query OR RegAddressForm LIKE @query OR ResAddressForm LIKE @query))
-            -- Нет нормализованного поиска телефона/email в этой таблице, так как полей нет
-    `;
+// Запрос 5: Поиск в CF_Persons_test
+const personQuery = `
+    SELECT
+        UNID, INN, SNILS, FirstName, LastName, MiddleName, BirthDate, RegAddressPassport, RegAddressForm, ResAddressForm, State
+    FROM CF_Persons_test
+    WHERE
+        (@query IS NOT NULL AND (LastName LIKE @query OR FirstName LIKE @query OR MiddleName LIKE @query OR UNID LIKE @query OR INN LIKE @query OR RegAddressPassport LIKE @query OR RegAddressForm LIKE @query OR ResAddressForm LIKE @query))
+`;
 
-    // Запрос 6: Поиск в CF_Contacts_test
-    const contactQuery = `
-        SELECT
-            PersonUNID, ContactType, Contact
-        FROM CF_Contacts_test
-        WHERE
-            -- Основной поиск по тексту (перестраховка)
-            (@query IS NOT NULL AND (PersonUNID LIKE @query OR Contact LIKE @query))
-            OR
-            -- Поиск по нормализованному телефону/email в Contact (если query был телефоном/email)
-            -- ИСПОЛЬЗУЕМ normalizePhoneSQL для Contact, предполагая, что ContactType уже проверен где-то в другом месте
-            (@phoneQuery IS NOT NULL AND ${normalizePhoneSQL('Contact')} = @phoneQuery) -- Точное совпадение нормализованных номеров
-            OR
-            (@emailQuery IS NOT NULL AND Contact LIKE @emailQuery) -- Предполагаем, что контакт может быть email
-    `;
-
+// Запрос 6: Поиск в CF_Contacts_test
+const contactQuery = `
+    SELECT
+        PersonUNID, ContactType, Contact
+    FROM CF_Contacts_test
+    WHERE
+        (@query IS NOT NULL AND (PersonUNID LIKE @query OR Contact LIKE @query))
+        OR
+        (@phoneQuery IS NOT NULL AND ${normalizePhoneSQL('Contact')} = @phoneQuery)
+        OR
+        (@emailQuery IS NOT NULL AND Contact LIKE @emailQuery)
+`;
     // Выполнение запросов параллельно
     const [contragentResult, employeeResult, contPersonResult, prevWorkResult, personResult, contactResult] = await Promise.all([
         request.query(contragentQuery),
