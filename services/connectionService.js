@@ -6,41 +6,41 @@ import { findConnectionsByPhone } from "./connectionByPhoneService.js";
 import { getEntityKey } from '../utils/helper.js';
 
 const SEARCH_CONFIGS = [
-        {
-            name: 'email',
-            filter: entity => {
-                const entityKey = getEntityKey(entity);
-                if (!entityKey) return false;
+        // {
+        //     name: 'email',
+        //     filter: entity => {
+        //         const entityKey = getEntityKey(entity);
+        //         if (!entityKey) return false;
                 
-                // Проверяем ВСЕ возможные поля с email
-                const hasEmail = (entity.eMail && entity.eMail.trim() !== '') ||
-                                (entity.cpMail && entity.cpMail.trim() !== '') ||
-                                (entity.fzMail && entity.fzMail.trim() !== '') ||
-                                (entity.Contact && entity.Contact.includes('@')); // для CF_Contacts
+        //         // Проверяем ВСЕ возможные поля с email
+        //         const hasEmail = (entity.eMail && entity.eMail.trim() !== '') ||
+        //                         (entity.cpMail && entity.cpMail.trim() !== '') ||
+        //                         (entity.fzMail && entity.fzMail.trim() !== '') ||
+        //                         (entity.Contact && entity.Contact.includes('@')); // для CF_Contacts
                 
-                return hasEmail;
-            },
-            findFunction: findConnectionsByEmail,
-            type: 'contact',
-            subtype: 'email'
-        }
-    // {
-    //     name: 'inn',
-    //     filter: entity => {
-    //         const entityKey = getEntityKey(entity);
-    //         if (!entityKey) return false;
+        //         return hasEmail;
+        //     },
+        //     findFunction: findConnectionsByEmail,
+        //     type: 'contact',
+        //     subtype: 'email'
+        // },
+    {
+        name: 'inn',
+        filter: entity => {
+            const entityKey = getEntityKey(entity);
+            if (!entityKey) return false;
             
-    //         const hasAnyINN = (entity.INN && entity.INN.trim() !== '') ||
-    //                          (entity.phOrgINN && entity.phOrgINN.trim() !== '') ||
-    //                          (entity.fzINN && entity.fzINN.trim() !== '') ||
-    //                          (entity.conINN && entity.conINN.trim() !== '');
+            const hasAnyINN = (entity.INN && entity.INN.trim() !== '') ||
+                             (entity.phOrgINN && entity.phOrgINN.trim() !== '') ||
+                             (entity.fzINN && entity.fzINN.trim() !== '') ||
+                             (entity.conINN && entity.conINN.trim() !== '');
             
-    //         return hasAnyINN;
-    //     },
-    //     findFunction: findConnectionsByINN,
-    //     type: 'inn',
-    //     subtype: 'inn_match'
-    // }
+            return hasAnyINN;
+        },
+        findFunction: findConnectionsByINN,
+        type: 'inn',
+        subtype: 'inn_match'
+    }
 ];
 
 async function findConnections(entities) {
@@ -103,50 +103,111 @@ async function executeConnectionsSearch(searchData) {
 }
 
 function buildResultsWithConnections(normalizedEntities, searchData, connectionsResults) {
-    // console.log('=== DEBUG buildResultsWithConnections ===');
-    // console.log('Входные сущности:', normalizedEntities.length);
-    // console.log('Connections results:', {
-    //     email: connectionsResults.email?.size || 0,
-    //     phone: connectionsResults.phone?.size || 0, 
-    //     inn: connectionsResults.inn?.size || 0
-    // });
+    console.log('=== DEBUG buildResultsWithConnections ===');
     
-    const results = normalizedEntities.map(item => {
-        const entityKey = getEntityKey(item);
+    const allEntitiesMap = new Map();
+    
+    // 1. Добавляем исходные normalizedEntities
+    normalizedEntities.forEach(entity => {
+        const entityKey = getEntityKey(entity);
+        if (entityKey) {
+            allEntitiesMap.set(entityKey, entity);
+        }
+    });
+    
+    // 2. Добавляем сущности из connectionsResults И ИЗ СВЯЗЕЙ
+    SEARCH_CONFIGS.forEach(config => {
+        const connectionsMap = connectionsResults[config.name];
+        if (connectionsMap) {
+            connectionsMap.forEach((connections, entityKey) => {
+                // Добавляем исходную сущность
+                if (!allEntitiesMap.has(entityKey)) {
+                    const entity = getEntityFromConnections(connectionsMap, entityKey);
+                    if (entity) allEntitiesMap.set(entityKey, entity);
+                }
+                
+                // ДОБАВЛЯЕМ СУЩНОСТИ ИЗ СВЯЗЕЙ
+                Object.values(connections).forEach(connectionGroup => {
+                    if (connectionGroup.connections && Array.isArray(connectionGroup.connections)) {
+                        connectionGroup.connections.forEach(connection => {
+                            if (connection.connectedEntity) {
+                                const connectedEntityKey = getEntityKey(connection.connectedEntity);
+                                if (connectedEntityKey && !allEntitiesMap.has(connectedEntityKey)) {
+                                    allEntitiesMap.set(connectedEntityKey, connection.connectedEntity);
+                                    console.log(`✅ Добавлена найденная сущность: ${connectedEntityKey}`);
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+        }
+    });
+    
+    console.log(`Всего уникальных сущностей: ${allEntitiesMap.size}`);
+    
+    // 3. Создаем результаты с ПРОСТОЙ СТРУКТУРОЙ СВЯЗЕЙ
+    const results = Array.from(allEntitiesMap.values()).map(entity => {
+        const entityKey = getEntityKey(entity);
         let entityConnections = [];
         
         SEARCH_CONFIGS.forEach(config => {
             const connectionsMap = connectionsResults[config.name];
             if (entityKey && connectionsMap && connectionsMap.has(entityKey)) {
-                const connections = connectionsMap.get(entityKey) || {};
-                // console.log(`Найдены связи для ${entityKey}:`, Object.keys(connections));
+                const connections = connectionsMap.get(entityKey);
                 
-                for (const [contactKey, connectionList] of Object.entries(connections)) {
+                Object.entries(connections).forEach(([email, connectionGroup]) => {
+                    const connectionsArray = Array.isArray(connectionGroup.connections) 
+                        ? connectionGroup.connections 
+                        : [];
+                    
                     entityConnections.push({
-                        contact: contactKey,
+                        contact: email,
                         type: config.type,
                         subtype: config.subtype,
-                        connections: connectionList
+                        connections: connectionsArray
                     });
-                }
+                });
             }
         });
         
         return {
-            ...item,
+            ...entity,
             connections: entityConnections,
-            connectionsCount: entityConnections.length
+            connectionsCount: entityConnections.reduce((sum, conn) => sum + conn.connections.length, 0)
         };
     });
     
-    // console.log('Финальные результаты с связями:');
-    // results.forEach(result => {
-    //     if (result.connections.length > 0) {
-    //         console.log(`  ${getEntityKey(result)}: ${result.connections.length} связей`);
-    //     }
-    // });
+    console.log('Финальные результаты:');
+    results.forEach(result => {
+        if (result.connections.length > 0) {
+            console.log(`  ✅ ${getEntityKey(result)}: ${result.connectionsCount} связей по ${result.connections.length} email`);
+        } else {
+            console.log(`  ❌ ${getEntityKey(result)}: НЕТ связей`);
+        }
+    });
     
     return results;
+}
+
+function getEntityFromConnections(connectionsMap, entityKey) {
+    const connections = connectionsMap.get(entityKey);
+    if (!connections) return null;
+    
+    // Пытаемся найти entity в первой связи
+    for (const connectionGroup of Object.values(connections)) {
+        if (connectionGroup.connections && connectionGroup.connections.length > 0) {
+            // Берем connectedEntity из первой связи
+            return connectionGroup.connections[0].connectedEntity;
+        }
+    }
+    
+    // Если не нашли, создаем базовую сущность
+    return {
+        type: 'unknown', 
+        source: 'connection_search',
+        entityKey: entityKey
+    };
 }
 
 function processAdditionalConnections(results, normalizedEntities, innConnectionsMap) {

@@ -145,7 +145,7 @@ function createCardHtml(item) {
                                 { label: 'Связи', icon: 'fas fa-link' };
 
             if (Array.isArray(connectionGroup.connections)) {
-                const contactValue = connectionGroup.contact;
+        const contactValue = connectionGroup.email || connectionGroup.contact;
                 const connectionsList = connectionGroup.connections;
 
                 let sectionHtml = `

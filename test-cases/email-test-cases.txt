@@ -35,21 +35,25 @@ baker@mail.ru;info@maskota.ru;79219564848@yandex.ru -> находит совра
 - Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CF_Persons_test.UNID.
 - Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'person_via_contact', NameShort: 'ФИО_из_CF_Persons'.
++
 
 Кейс 6: Косвенный поиск - CF_Contacts -> CI_Employees
 - Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CI_Employees_test.fzUID.
 - Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'employee_via_contact', NameShort: 'fzFIO_из_CI_Employees'.
++
 
 Кейс 7: Косвенный поиск - CF_Contacts -> CI_ContPersons
 - Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CI_ContPersons_test.cpUID.
 - Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'contperson_via_contact', NameShort: 'cpNameFull_из_CI_ContPersons'.
++
 
 Кейс 8: Прямой поиск - CF_PrevWork.EMail -> CF_Persons
 - Условие: Ввести email, который есть в столбце EMail таблицы CF_PrevWork_test. PersonUNID из этой записи должен существовать в CF_Persons_test.UNID.
 - Ожидаемый результат: В connections появляется группа с type: 'contact', subtype: 'email', contact: 'введённый_email'.
   Внутри connections.connections есть элемент с connectedEntity.type: 'physical', sourceTable: 'person_from_prevwork_email', NameShort: 'ФИО_из_CF_Persons', prevWorkCaption: 'Caption_из_CF_PrevWork'.
++
 
 Кейс 9: Косвенный поиск - CF_Contacts -> CF_PrevWork -> CF_Persons
 - Условие: Ввести email, который есть в столбце Contact таблицы CF_Contacts_test. PersonUNID из этой записи должен существовать в CF_PrevWork_test.PersonUNID. PersonUNID из CF_PrevWork должен существовать в CF_Persons_test.UNID.

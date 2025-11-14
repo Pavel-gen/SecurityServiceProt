@@ -31,15 +31,15 @@ function buildEmailQuery(emailArray) {
         SELECT
             NULL as contactUNID,
             cip.conINN as contactINN,
-            cip.cpNameFull as contactNameShort,
             cip.cpNameFull as contactNameFull,
+            cip.cpNameFull as NameFull,
             cip.cpMail as contactEmail,
             2 as UrFiz,
             0 as fIP,
             NULL as fzUID,
             cip.cpUID as cpUID,
             NULL as PersonUNID,
-            'contperson' as sourceTable,
+            'CI_ContPersons_test' as sourceTable,
             cip.cpUID as entityKey,
             cip.BaseName as baseName,
             NULL as relatedPersonUNID,
@@ -95,27 +95,27 @@ function buildEmailQuery(emailArray) {
 
     // --- КОСВЕННЫЕ ПОИСКИ (через CF_Contacts) ---
     // Кейс 4 (точка входа) + 5: CF_Contacts.Contact -> CF_Persons
-    const indirectContactToPersonQuery = `
-        SELECT
-            p.UNID as contactUNID,
-            p.INN as contactINN,
-            CONCAT(p.LastName, ' ', p.FirstName, ' ', COALESCE(p.MiddleName, '')) as contactNameShort,
-            CONCAT(p.LastName, ' ', p.FirstName, ' ', COALESCE(p.MiddleName, '')) as contactNameFull,
-            cc.Contact as contactEmail,
-            2 as UrFiz,
-            0 as fIP,
-            NULL as fzUID,
-            NULL as cpUID,
-            p.UNID as PersonUNID,
-            'person_via_contact' as sourceTable,
-            p.UNID as entityKey,
-            NULL as baseName,
-            cc.PersonUNID as relatedPersonUNID,
-            NULL as prevWorkCaption
-        FROM CF_Contacts_test cc
-        JOIN CF_Persons_test p ON cc.PersonUNID = p.UNID
-        WHERE LOWER(cc.Contact) IN (${emailParams.join(', ')}) 
-    `;
+    // const indirectContactToPersonQuery = `
+    //     SELECT
+    //         p.UNID as contactUNID,
+    //         p.INN as contactINN,
+    //         CONCAT(p.LastName, ' ', p.FirstName, ' ', COALESCE(p.MiddleName, '')) as contactNameShort,
+    //         CONCAT(p.LastName, ' ', p.FirstName, ' ', COALESCE(p.MiddleName, '')) as contactNameFull,
+    //         cc.Contact as contactEmail,
+    //         2 as UrFiz,
+    //         0 as fIP,
+    //         NULL as fzUID,
+    //         NULL as cpUID,
+    //         p.UNID as PersonUNID,
+    //         'person_via_contact' as sourceTable,
+    //         p.UNID as entityKey,
+    //         NULL as baseName,
+    //         cc.PersonUNID as relatedPersonUNID,
+    //         NULL as prevWorkCaption
+    //     FROM CF_Contacts_test cc
+    //     JOIN CF_Persons_test p ON cc.PersonUNID = p.UNID
+    //     WHERE LOWER(cc.Contact) IN (${emailParams.join(', ')}) 
+    // `;
 
     // Кейс 4 (точка входа) + 6: CF_Contacts.Contact -> CI_Employees
     const indirectContactToEmployeeQuery = `
@@ -213,7 +213,7 @@ function buildEmailQuery(emailArray) {
     // Сначала объединим прямые
     const directQueriesUnion = `(${directContragentQuery}) UNION ALL (${directContPersonQuery}) UNION ALL (${directEmployeeQuery}) UNION ALL (${directPrevWorkToPersonQuery})`;
     // Затем объединим косвенные
-    const indirectQueriesUnion = `(${indirectContactToPersonQuery}) UNION ALL (${indirectContactToEmployeeQuery}) UNION ALL (${indirectContactToContPersonQuery}) UNION ALL (${indirectContactToPrevWorkToPersonQuery}) UNION ALL (${directContactQuery})`;
+    const indirectQueriesUnion = `(${indirectContactToEmployeeQuery}) UNION ALL (${indirectContactToContPersonQuery}) UNION ALL (${indirectContactToPrevWorkToPersonQuery}) UNION ALL (${directContactQuery})`;
 
     // Объединим все
     return `${directQueriesUnion} UNION ALL ${indirectQueriesUnion}`;
