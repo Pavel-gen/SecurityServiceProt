@@ -23,7 +23,7 @@ const SEARCH_CONFIGS = [
             findFunction: findConnectionsByEmail,
             type: 'contact',
             subtype: 'email'
-        }
+        },
     // {
     //     name: 'inn',
     //     filter: entity => {
@@ -103,23 +103,60 @@ async function executeConnectionsSearch(searchData) {
 }
 
 function buildResultsWithConnections(normalizedEntities, searchData, connectionsResults) {
-    // console.log('=== DEBUG buildResultsWithConnections ===');
-    // console.log('Входные сущности:', normalizedEntities.length);
-    // console.log('Connections results:', {
-    //     email: connectionsResults.email?.size || 0,
-    //     phone: connectionsResults.phone?.size || 0, 
-    //     inn: connectionsResults.inn?.size || 0
-    // });
+    console.log('=== DEBUG buildResultsWithConnections ===');
     
-    const results = normalizedEntities.map(item => {
-        const entityKey = getEntityKey(item);
+    // СОБИРАЕМ ВСЕ УНИКАЛЬНЫЕ СУЩНОСТИ ИЗ ВСЕХ RESULTS
+    const allEntitiesMap = new Map();
+    
+    // 1. Добавляем исходные normalizedEntities
+    normalizedEntities.forEach(entity => {
+        const entityKey = getEntityKey(entity);
+        if (entityKey) {
+            allEntitiesMap.set(entityKey, entity);
+        }
+    });
+    
+    // 2. Добавляем сущности из connectionsResults (найденные через связи)
+    SEARCH_CONFIGS.forEach(config => {
+        const connectionsMap = connectionsResults[config.name];
+        if (connectionsMap) {
+            connectionsMap.forEach((connections, entityKey) => {
+                // Если сущности еще нет в allEntitiesMap, создаем базовую
+                if (!allEntitiesMap.has(entityKey)) {
+                    // Ищем connectedEntity в любой из связей чтобы получить данные сущности
+                    let entityData = null;
+                    Object.values(connections).forEach(connectionList => {
+                        if (connectionList && connectionList.length > 0 && !entityData) {
+                            entityData = connectionList[0].connectedEntity;
+                        }
+                    });
+                    
+                    if (entityData) {
+                        allEntitiesMap.set(entityKey, entityData);
+                    } else {
+                        // Создаем минимальную сущность если не нашли данных
+                        allEntitiesMap.set(entityKey, {
+                            type: 'unknown',
+                            source: 'connection_search',
+                            entityKey: entityKey
+                        });
+                    }
+                }
+            });
+        }
+    });
+    
+    console.log(`Всего сущностей для обработки: ${allEntitiesMap.size}`);
+    
+    // ТЕПЕРЬ СОЗДАЕМ РЕЗУЛЬТАТЫ ДЛЯ ВСЕХ СУЩНОСТЕЙ
+    const results = Array.from(allEntitiesMap.values()).map(entity => {
+        const entityKey = getEntityKey(entity);
         let entityConnections = [];
         
         SEARCH_CONFIGS.forEach(config => {
             const connectionsMap = connectionsResults[config.name];
             if (entityKey && connectionsMap && connectionsMap.has(entityKey)) {
                 const connections = connectionsMap.get(entityKey) || {};
-                // console.log(`Найдены связи для ${entityKey}:`, Object.keys(connections));
                 
                 for (const [contactKey, connectionList] of Object.entries(connections)) {
                     entityConnections.push({
@@ -133,18 +170,18 @@ function buildResultsWithConnections(normalizedEntities, searchData, connections
         });
         
         return {
-            ...item,
+            ...entity,
             connections: entityConnections,
             connectionsCount: entityConnections.length
         };
     });
     
-    // console.log('Финальные результаты с связями:');
-    // results.forEach(result => {
-    //     if (result.connections.length > 0) {
-    //         console.log(`  ${getEntityKey(result)}: ${result.connections.length} связей`);
-    //     }
-    // });
+    console.log('Финальные результаты с связями:');
+    results.forEach(result => {
+        if (result.connections.length > 0) {
+            console.log(`  ${getEntityKey(result)}: ${result.connections.length} связей, тип: ${result.type}`);
+        }
+    });
     
     return results;
 }
