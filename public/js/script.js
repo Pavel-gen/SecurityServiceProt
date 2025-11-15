@@ -247,140 +247,125 @@ function createCardHtml(item) {
     });
 
     // --- ГЕНЕРИРУЕМ БЛОК СВЯЗЕЙ (обновлённый) ---
-    let connectionsBlock = '<p>Связей не найдено.</p>';
-    let connectionCount = 0;
+let connectionsBlock = '<p>Связей не найдено.</p>';
+let connectionCount = 0;
 
-    if (item.connections && Array.isArray(item.connections) && item.connections.length > 0) {
-        const allConnectionsHtml = [];
+if (item.connections && Array.isArray(item.connections) && item.connections.length > 0) {
+    
+    // 1. ГРУППИРУЕМ: ТИП -> ЗНАЧЕНИЕ -> СВЯЗИ
+    const groupedData = {};
+    
+    item.connections.forEach(connectionGroup => {
+        const type = connectionGroup.type;
+        const value = connectionGroup.contact;
+        
+        if (!groupedData[type]) {
+            groupedData[type] = {};
+        }
+        if (!groupedData[type][value]) {
+            groupedData[type][value] = [];
+        }
+        
+        if (Array.isArray(connectionGroup.connections)) {
+            groupedData[type][value].push(...connectionGroup.connections);
+        }
+    });
 
-        item.connections.forEach(connectionGroup => {
-            // ... (логика для email и phone, если нужна) ...
+    console.log("Группировка:", groupedData);
 
-            // --- НОВЫЙ БЛОК: Обработка связей по ИНН ---
-            if (connectionGroup.type === 'inn' && connectionGroup.subtype === 'inn_match' && Array.isArray(connectionGroup.connections)) {
-                const innValue = connectionGroup.contact; // ИНН, по которому была найдена связь
-                const connectionsList = connectionGroup.connections;
+    // 2. КОНФИГУРАЦИЯ ТИПОВ
+    const typeConfigs = {
+        'contact': {
+            icon: 'fas fa-envelope',
+            label: 'Email',
+            valueSuffix: ''
+        },
+        'inn': {
+            icon: 'fas fa-id-card',
+            label: 'ИНН', 
+            valueSuffix: ''
+        },
+        'phone': {
+            icon: 'fas fa-phone',
+            label: 'Телефоны',
+            valueSuffix: ''
+        }
+    };
 
-                let innSectionHtml = `
-                    <div class="info-item">
-                        <div class="info-icon"><i class="fas fa-id-card"></i></div>
-                        <div class="info-content">
-                            <div class="info-label">Связи по ИНН</div>
-                            <div class="info-value">${innValue}</div>
-                        </div>
+    // 3. СОЗДАЕМ HTML С ВЛОЖЕННОЙ СТРУКТУРОЙ
+    const allGroupsHtml = [];
+
+    Object.entries(groupedData).forEach(([type, valuesMap]) => {
+        const config = typeConfigs[type];
+        if (!config) return;
+
+        const values = Object.keys(valuesMap);
+        const valuesCount = values.length;
+
+        let groupHtml = `
+            <div class="connection-type">
+                <i class="${config.icon}"></i>
+                ${config.label} (${valuesCount})
+            </div>
+            <div class="connection-details">
+        `;
+
+        // ДЛЯ КАЖДОГО ЗНАЧЕНИЯ (email/inn/phone)
+        Object.entries(valuesMap).forEach(([value, connections]) => {
+            // Заголовок значения
+            groupHtml += `
+                <div class="connection-detail">
+                    <span class="connection-value-main">${value}${config.valueSuffix} →</span>
+                </div>
+            `;
+
+            // Все связи для этого значения
+            connections.forEach(conn => {
+                const connectedEntity = conn.connectedEntity;
+                const connectedName = connectedEntity.NameShort || connectedEntity.NameFull || connectedEntity.INN || 'N/A';
+                const connectionDetails = conn.connectionDetails || 'Нет описания связи';
+                const source = connectedEntity.source;
+                const baseName = connectedEntity.baseName;
+
+                // Форматируем connectionDetails - убираем повтор value
+                let cleanDetails = connectionDetails;
+                if (connectionDetails.includes(value)) {
+                    cleanDetails = connectionDetails.replace(new RegExp(`${value}[,\\s]*`, 'gi'), '').trim();
+                    // Убираем лишние запятые в начале
+                    cleanDetails = cleanDetails.replace(/^,\s*/, '');
+                }
+
+                // Формат источника
+                let sourceText = '';
+                if (source === 'local') {
+                    sourceText = baseName ? ` (БД: ${baseName})` : '';
+                } else if (source === 'delta') {
+                    sourceText = ' (Delta Безопасность)';
+                }
+
+                groupHtml += `
+                    <div class="connection-detail">
+                        <span class="connection-value">${connectedName}</span>
+                        <span class="connection-comment">(${cleanDetails}${sourceText})</span>
                     </div>
-                    <div class="connections-details-container">
                 `;
-
-                // Перебираем каждую связь отдельно
-                connectionsList.forEach(conn => {
-                    const connectedEntity = conn.connectedEntity;
-                    const connectedName = connectedEntity.NameShort || connectedEntity.NameFull || connectedEntity.INN || 'N/A';
-                    const connectedType = connectedEntity.type || 'unknown';
-                    const connectionStatus = conn.connectionStatus;
-                    const sourceTable = connectedEntity.sourceTable;
-                    const baseName = connectedEntity.baseName; // Имя БД источника
-                    const source = connectedEntity.source; // Источник: local или delta
-
-                    let connectedIcon = 'fas fa-question-circle';
-                    if (connectedType === 'juridical') connectedIcon = 'fas fa-building';
-                    else if (connectedType === 'ip') connectedIcon = 'fas fa-store';
-                    else if (connectedType === 'physical') connectedIcon = 'fas fa-user';
-
-                    // Определяем человекочитаемое описание статуса
-                    let statusDescription = 'Статус неизвестен';
-                    switch (connectionStatus) {
-                        case 'organization_match':
-                            statusDescription = 'Совпадение по ИНН организации';
-                            break;
-                        case 'former_employee':
-                            statusDescription = 'Бывший сотрудник';
-                            break;
-                        case 'current_employee':
-                            statusDescription = 'Текущий сотрудник';
-                            break;
-                        case 'contact_person':
-                            statusDescription = 'Контактное лицо';
-                            break;
-                        default:
-                            statusDescription = connectionStatus; // Используем как есть, если не распознали
-                    }
-
-                    // Определяем человекочитаемое описание источника и БД
-                    let sourceDescription = 'Источник неизвестен';
-                    let baseNameDescription = '';
-                    if (source === 'local') {
-                        switch (sourceTable) {
-                            case 'contragent':
-                                sourceDescription = 'Контрагент';
-                                break;
-                            case 'prevwork':
-                                sourceDescription = 'Предыдущее место работы';
-                                break;
-                            case 'employee':
-                                sourceDescription = 'Сотрудник';
-                                break;
-                            case 'contperson':
-                                sourceDescription = 'Таблица контактных лиц';
-                                break;
-                            default:
-                                sourceDescription = sourceTable; // Используем как есть, если не распознали
-                        }
-                        baseNameDescription = baseName ? ` (БД: ${baseName})` : ' (БД: не указана)';
-                    } else if (source === 'delta') {
-                        sourceDescription = 'Delta Безопасность';
-                        baseNameDescription = ''; // Delta не имеет BaseName
-                    }
-
-// eslint-disable-next-line no-unused-vars
-                    const connectionDetails = conn.connectionDetails; // Основная строка
-                    const employeeInfo = conn.employeeInfo; // Структурированные данные сотрудника
-
-// ... (определение иконки, статуса, источника) ...
-
-// --- НАЧАЛО: Формирование HTML для деталей сотрудника ---
-                    let employeeDetailsHtml = '';
-                    if (employeeInfo) { // Проверяем, есть ли объект employeeInfo
-                        employeeDetailsHtml = '<div class="employee-details">'; // Контейнер для деталей сотрудника
-                        if (employeeInfo.phFunction) {
-                            employeeDetailsHtml += `<div class="emp-position">Должность: ${employeeInfo.phFunction}</div>`;
-                        }
-                        if (employeeInfo.phEventType) {
-                            employeeDetailsHtml += `<div class="emp-event">Событие: ${employeeInfo.phEventType}</div>`;
-                        }
-                        if (employeeInfo.phDate) {
-                            employeeDetailsHtml += `<div class="emp-date">Дата: ${employeeInfo.phDate}</div>`;
-                        }
-                        // Добавьте другие поля, если нужно
-                        employeeDetailsHtml += '</div>';
-                    }
-                    // --- КОНЕЦ: Формирование HTML для деталей сотрудника ---
-
-                    // Формируем основной HTML для связи
-                    innSectionHtml += `
-                        <div class="connection-detail">
-                            <i class="${connectedIcon}"></i>
-                            <div class="connection-info">
-                                <div class="connected-name">${connectedName}</div>
-                                <div class="connection-meta">(${statusDescription}, ${sourceDescription}${baseNameDescription})</div>
-                                <!-- Вставляем детали сотрудника, если они есть -->
-                                ${employeeDetailsHtml}
-                            </div>
-                        </div>
-                    `;
-                    connectionCount++; // Увеличиваем счетчик на 1 за каждую связь
-                });
-
-                innSectionHtml += '</div>';
-                allConnectionsHtml.push(innSectionHtml);
-            }
-            // else if ... (другие типы связей)
+                connectionCount++;
+            });
         });
 
-        if (allConnectionsHtml.length > 0) {
-            connectionsBlock = allConnectionsHtml.join('');
-        }
+        groupHtml += `
+            </div>
+        `;
+        
+        allGroupsHtml.push(groupHtml);
+    });
+
+    if (allGroupsHtml.length > 0) {
+        connectionsBlock = allGroupsHtml.join('');
     }
+}
+
+console.log("=== КОНЕЦ ОБРАБОТКИ СВЯЗЕЙ ===");
     // --- КОНЕЦ ГЕНЕРАЦИИ БЛОКА СВЯЗЕЙ ---
 
     // --- ДОБАВЛЯЕМ БЛОК JSON (как и раньше) ---

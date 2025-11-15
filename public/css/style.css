@@ -435,8 +435,6 @@ header {
 
 .connection-detail:before {
     content: '└';
-    position: absolute;
-    left: -25px;
     color: var(--text-light);
 }
 
@@ -549,34 +547,6 @@ header {
     display: block;
 }
 
-.connections-details-container {
-    margin-top: 8px; /* Отступ сверху от email */
-    margin-left: 20px; /* Начальный отступ слева для всего списка связей */
-}
-
-.connection-detail {
-    margin: 4px 0; /* Отступ между элементами связей */
-    padding-left: 15px; /* Отступ слева для каждого элемента */
-    position: relative; /* Позиционирование для псевдоэлемента */
-    line-height: 1.4; /* Высота строки для лучшего вида */
-}
-
-.connection-detail i {
-    margin-right: 5px; /* Отступ между иконкой и текстом */
-    font-size: 0.9em; /* Размер иконки */
-    vertical-align: middle; /* Выравнивание по центру строки */
-}
-
-.connection-detail:before {
-    content: '└'; /* Символ, отображаемый перед каждым элементом */
-    position: absolute; /* Абсолютное позиционирование */
-    left: 0; /* Позиция слева */
-    color: var(--text-light); /* Используем переменную цвета из вашего CSS, если она есть */
-    /* Если переменной --text-light нет, замените на конкретный цвет, например #6c757d */
-    font-size: 0.9em; /* Размер символа */
-}
-
-
 @media (max-width: 768px) {
     .header-content {
         flex-direction: column;
@@ -612,4 +582,181 @@ header {
         width: 100%;
         justify-content: flex-end;
     }
+}
+
+/* ===== СТИЛИ ДЛЯ СВЯЗЕЙ ===== */
+.connection-type {
+    display: flex;
+    align-items: center;
+    font-weight: bold;
+    margin: 15px 0 8px 0;
+    padding: 8px 12px;
+    background: var(--primary-light);
+    border-radius: 6px;
+    border-left: 4px solid var(--primary);
+    color: var(--primary);
+}
+
+.connection-type i {
+    margin-right: 8px;
+    color: var(--primary);
+}
+
+.connections-details-container {
+    margin-left: 10px;
+}
+
+.connection-detail {
+    display: flex;
+    align-items: flex-start;
+    margin: 4px 0;
+    padding: 4px 0;
+    gap: 8px;
+    line-height: 1.4;
+}
+
+.connection-detail.level-1 {
+    font-weight: 600;
+    color: var(--primary);
+    margin-left: 0;
+}
+
+.connection-detail.level-2 {
+    margin-left: 20px;
+    color: var(--text);
+}
+
+.connection-symbol {
+    color: var(--text-light);
+    font-size: 0.9em;
+    width: 12px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.connection-value-main {
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.connection-detail.level-2 i {
+    font-size: 0.9em;
+    color: var(--primary);
+    margin-top: 1px;
+    flex-shrink: 0;
+    width: 16px;
+}
+
+.connection-value {
+    font-weight: 500;
+    color: var(--text);
+}
+
+.connection-comment {
+    color: var(--text-light);
+    font-size: 0.9em;
+}
+
+.connection-spacer {
+    height: 8px;
+}
+
+/* ===== СТИЛИ ДЛЯ СВЯЗЕЙ ===== */
+.connection-type {
+    display: flex;
+    align-items: center;
+    font-weight: bold;
+    margin: 15px 0 8px 0;
+    padding: 8px 12px;
+    background: var(--primary-light);
+    border-radius: 6px;
+    border-left: 4px solid var(--primary);
+    color: var(--primary);
+}
+
+.connection-type i {
+    margin-right: 8px;
+    color: var(--primary);
+}
+
+.connections-details-container {
+    margin-left: 10px;
+}
+
+.connection-detail {
+    display: flex;
+    align-items: flex-start;
+    margin: 4px 0;
+    padding: 4px 0;
+    line-height: 1.4;
+    min-height: 20px;
+}
+
+.connection-detail.level-1 {
+    font-weight: 600;
+    color: var(--primary);
+    margin-left: 0;
+}
+
+.connection-detail.level-2 {
+    margin-left: 20px;
+    color: var(--text);
+}
+
+/* ФИКСИРОВАННАЯ ШИРИНА ДЛЯ ВЫРАВНИВАНИЯ */
+.connection-symbol {
+    color: var(--text-light);
+    font-size: 0.9em;
+    width: 12px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    text-align: center;
+}
+
+.connection-value-main {
+    font-weight: 600;
+    color: var(--primary);
+    min-width: 200px; /* Фиксированная ширина для выравнивания */
+    flex-shrink: 0;
+}
+
+.connection-detail.level-2 i {
+    font-size: 0.9em;
+    color: var(--primary);
+    margin-top: 1px;
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+}
+
+.connection-value {
+    font-weight: 500;
+    color: var(--text);
+    min-width: 250px; /* Фиксированная ширина для имен */
+    flex-shrink: 0;
+}
+
+.connection-comment {
+    color: var(--text-light);
+    font-size: 0.9em;
+    flex: 1;
+}
+
+.connection-spacer {
+    height: 8px;
+}
+
+/* Убираем все старые стили для connections */
+.connection-type-group,
+.type-header,
+.type-icon,
+.type-info,
+.type-label,
+.type-values,
+.connections-list,
+.connection-item,
+.connection-content,
+.entity-name,
+.connections-sub-container {
+    all: unset;
 }

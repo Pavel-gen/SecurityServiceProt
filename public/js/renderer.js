@@ -132,110 +132,158 @@ function createCardHtml(item) {
         }
     });
 
-    // --- ГЕНЕРИРУЕМ БЛОК СВЯЗЕЙ (обновлённый) ---
-    let connectionsBlock = '<p>Связей не найдено.</p>';
-    let connectionCount = 0;
+let connectionsBlock = '<p>Связей не найдено.</p>';
+let connectionCount = 0;
 
-    if (item.connections && Array.isArray(item.connections) && item.connections.length > 0) {
-        const allConnectionsHtml = [];
+if (item.connections && Array.isArray(item.connections) && item.connections.length > 0) {
+    
+    // 1. ГРУППИРУЕМ: ТИП -> ЗНАЧЕНИЕ -> СВЯЗИ
+    const groupedData = {};
+    
+    item.connections.forEach(connectionGroup => {
+        const type = connectionGroup.type;
+        const value = connectionGroup.contact;
+        
+        if (!groupedData[type]) {
+            groupedData[type] = {};
+        }
+        if (!groupedData[type][value]) {
+            groupedData[type][value] = [];
+        }
+        
+        if (Array.isArray(connectionGroup.connections)) {
+            groupedData[type][value].push(...connectionGroup.connections);
+        }
+    });
 
-        item.connections.forEach(connectionGroup => {
-            const contactConfig = CONTACT_TYPES[connectionGroup.subtype] || 
-                                CONTACT_TYPES[connectionGroup.type] || 
-                                { label: 'Связи', icon: 'fas fa-link' };
+    // 2. КОНФИГУРАЦИЯ ТИПОВ
+    const typeConfigs = {
+        'contact': {
+            icon: 'fas fa-envelope',
+            label: 'Email'
+        },
+        'inn': {
+            icon: 'fas fa-id-card',
+            label: 'ИНН'
+        },
+        'phone': {
+            icon: 'fas fa-phone',
+            label: 'Телефоны'
+        }
+    };
 
-            if (Array.isArray(connectionGroup.connections)) {
-        const contactValue = connectionGroup.email || connectionGroup.contact;
-                const connectionsList = connectionGroup.connections;
+    // 3. СОЗДАЕМ HTML С ВЛОЖЕННОЙ СТРУКТУРОЙ
+    const allGroupsHtml = [];
 
-                let sectionHtml = `
-                    <div class="info-item">
-                        <div class="info-icon"><i class="${contactConfig.icon}"></i></div>
-                        <div class="info-content">
-                            <div class="info-label">${contactConfig.label}</div>
-                            <div class="info-value">${contactValue}</div>
-                        </div>
-                    </div>
-                    <div class="connections-details-container">
-                `;
+    Object.entries(groupedData).forEach(([type, valuesMap]) => {
+        const config = typeConfigs[type];
+        if (!config) return;
 
-                connectionsList.forEach(conn => {
-                    // console.log('connect: ', conn);
-                    const connectedEntity = conn.connectedEntity;
-                    const connectedName = connectedEntity.NameShort || connectedEntity.NameFull || 
-                                        connectionGroup.contact || connectedEntity.type || 'N/A';
-                    const connectedType = connectedEntity.type || 'unknown';
-                    const connectionStatus = conn.connectionStatus;
-                    const sourceTable = connectedEntity.sourceTable;
-                    const baseName = connectedEntity.baseName;
-                    const source = connectedEntity.source;
+        const values = Object.keys(valuesMap);
+        const valuesCount = values.length;
 
-                    // Получаем конфигурацию из объектов
-                    const entityConfig = ENTITY_TYPES[connectedType] || ENTITY_TYPES.unknown;
-                    const sourceConfig = SOURCE_TABLE_CONFIG[sourceTable] || { label: sourceTable, category: 'unknown' };
-                    const statusText = CONNECTION_STATUS_CONFIG[connectionStatus] || connectionStatus;
+        let groupHtml = `
+            <div class="connection-type">
+                <i class="${config.icon}"></i>
+                ${config.label} (${valuesCount})
+            </div>
+            <div class="connections-details-container">
+        `;
 
-                    // Определяем источник и базу данных
-                    let sourceDescription = sourceConfig.label;
-                    let baseNameDescription = '';
+        // ДЛЯ КАЖДОГО ЗНАЧЕНИЯ (email/inn/phone)
+        Object.entries(valuesMap).forEach(([value, connections]) => {
+            // Заголовок значения (уровень 1)
+            groupHtml += `
+                <div class="connection-detail level-1">
+                    <span class="connection-value-main">${value} →</span>
+                </div>
+            `;
+
+            // Все связи для этого значения (уровень 2)
+            connections.forEach(conn => {
+                const connectedEntity = conn.connectedEntity;
+                const connectedName = connectedEntity.NameShort || connectedEntity.NameFull || connectedEntity.INN || 'N/A';
+                const connectionDetails = conn.connectionDetails || 'Нет описания связи';
+                const source = connectedEntity.source;
+                const baseName = connectedEntity.baseName;
+
+                // Определяем иконку сущности
+                function getEntityIcon(entity) {
+                    // Если тип явно указан
+                    if (entity.type === 'organization' || entity.type === 'juridical') {
+                        return 'fas fa-building';
+                    }
+                    if (entity.type === 'physical') {
+                        return 'fas fa-user';
+                    }
+                    if (entity.type === 'ip') {
+                        return 'fas fa-store';
+                    }
+                    if (entity.type === 'contact') {
+                        return 'fas fa-address-card';
+                    }
                     
-                    if (source === 'local') {
-                        baseNameDescription = baseName ? ` (БД: ${baseName})` : ' (БД: не указана)';
-                    } else if (source === 'delta') {
-                        sourceDescription = 'Delta Безопасность';
-                        baseNameDescription = '';
+                    // Определяем по UrFiz
+                    if (entity.UrFiz === 1) {
+                        return 'fas fa-building'; // Юрлицо
                     }
-
-                    // Дополнительный контекст
-                    let additionalContext = '';
-                    const prevWorkCaption = conn.connectedEntity.prevWorkCaption;
-                    if (prevWorkCaption && (sourceTable === 'person_from_prevwork_email' || sourceTable === 'person_from_prevwork_via_contact')) {
-                        additionalContext = ` (ранее работал в: "${prevWorkCaption}")`;
+                    if (entity.UrFiz === 2) {
+                        return 'fas fa-user'; // Физлицо
                     }
-
-                    // Информация о сотруднике
-                    let employeeDetailsHtml = '';
-                    const employeeInfo = conn.employeeInfo;
-                    if (employeeInfo) {
-                        employeeDetailsHtml = '<div class="employee-details">';
-                        if (employeeInfo.phFunction) {
-                            employeeDetailsHtml += `<div class="emp-position">Должность: ${employeeInfo.phFunction}</div>`;
-                        }
-                        if (employeeInfo.phEventType) {
-                            employeeDetailsHtml += `<div class="emp-event">Событие: ${employeeInfo.phEventType}</div>`;
-                        }
-                        if (employeeInfo.phDate && employeeInfo.phDate !== '01.01.1900') {
-                            employeeDetailsHtml += `<div class="emp-date">Дата: ${employeeInfo.phDate}</div>`;
-                        }
-                        employeeDetailsHtml += '</div>';
+                    
+                    // Определяем по fIP (ИП)
+                    if (entity.fIP === true || entity.fIP === 1) {
+                        return 'fas fa-store';
                     }
+                    
+                    // По умолчанию
+                    return 'fas fa-question-circle';
+                }
 
-                    // Формируем HTML для связи
-                    sectionHtml += `
-                        <div class="connection-detail">
-                            <i class="${entityConfig.icon}"></i>
-                            <div class="connection-info">
-                                <div class="connected-name">${connectedName}</div>
-                                <div class="connection-meta">${statusText}, ${sourceDescription}${additionalContext}${baseNameDescription}</div>
-                                ${employeeDetailsHtml}
-                            </div>
-                        </div>
-                    `;
-                    connectionCount++;
-                });
+                // Используем так:
+let entityIcon = getEntityIcon(connectedEntity);
 
-                sectionHtml += '</div>';
-                allConnectionsHtml.push(sectionHtml);
-            }
+                // Форматируем connectionDetails
+                let cleanDetails = connectionDetails;
+                if (connectionDetails.includes(value)) {
+                    cleanDetails = connectionDetails.replace(new RegExp(`${value}[,\\s]*`, 'gi'), '').trim();
+                    cleanDetails = cleanDetails.replace(/^,\s*/, '');
+                }
+
+                // Формат источника
+                let sourceText = '';
+                if (source === 'local') {
+                    sourceText = baseName ? ` (БД: ${baseName})` : '';
+                } else if (source === 'delta') {
+                    sourceText = ' (Delta Безопасность)';
+                }
+
+                groupHtml += `
+                    <div class="connection-detail level-2">
+                        <i class="${entityIcon}"></i>
+                        <span class="connection-value">${connectedName}</span>
+                        <span class="connection-comment">(${cleanDetails}${sourceText})</span>
+                    </div>
+                `;
+                
+                connectionCount++;
+            });
+
+            // Добавляем отступ между группами значений
+            groupHtml += `<div class="connection-spacer"></div>`;
         });
 
-        if (allConnectionsHtml.length > 0) {
-            connectionsBlock = allConnectionsHtml.join('');
-        }
-    }
-    // --- КОНЕЦ ГЕНЕРАЦИИ БЛОКА СВЯЗЕЙ ---
+        groupHtml += `
+            </div>
+        `;
+        
+        allGroupsHtml.push(groupHtml);
+    });
 
-    // --- ДОБАВЛЯЕМ БЛОК JSON (как и раньше) ---
+    if (allGroupsHtml.length > 0) {
+        connectionsBlock = allGroupsHtml.join('');
+    }
+}    // --- ДОБАВЛЯЕМ БЛОК JSON (как и раньше) ---
     const itemJsonString = JSON.stringify(item, null, 2)
         .replace(/&/g, '&amp;')
         .replace(/</g, '<')
